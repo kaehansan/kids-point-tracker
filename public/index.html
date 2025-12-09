@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <title>⭐ Kids Points Tracker</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- Auth Modal -->
+    <div id="authModal" class="modal">
+        <div class="modal-content">
+            <h2>🔐 Parent Login</h2>
+            <input type="password" id="passwordInput" placeholder="Enter password" autocomplete="off">
+            <button onclick="login()" class="btn-primary">Login</button>
+            <p id="authError" class="error-message"></p>
+        </div>
+    </div>
+
+    <!-- Main Container -->
+    <div id="mainApp" style="display: none;">
+        <!-- Header -->
+        <header>
+            <h1>⭐ Points Tracker</h1>
+            <button onclick="showSettings()" class="settings-btn">⚙️</button>
+        </header>
+
+        <!-- Kids Dashboard -->
+        <div id="kidsDashboard" class="kids-container"></div>
+
+        <!-- Quick Actions -->
+        <div class="quick-actions">
+            <h3>Quick Add/Remove</h3>
+            <div id="selectedKid" class="selected-kid">Tap a kid above to start</div>
+            
+            <div class="points-input-section">
+                <div class="input-group">
+                    <label>Points (minutes)</label>
+                    <div class="number-input">
+                        <button onclick="decrementPoints()" class="btn-number">-</button>
+                        <input type="number" id="pointsInput" value="5" min="1" max="999">
+                        <button onclick="incrementPoints()" class="btn-number">+</button>
+                    </div>
+                </div>
+
+                <div class="quick-buttons">
+                    <button onclick="setPoints(5)" class="quick-btn">5</button>
+                    <button onclick="setPoints(10)" class="quick-btn">10</button>
+                    <button onclick="setPoints(15)" class="quick-btn">15</button>
+                    <button onclick="setPoints(30)" class="quick-btn">30</button>
+                </div>
+            </div>
+
+            <div class="tags-section">
+                <label>Choose Activity <span style="color: #718096; font-weight: normal; font-size: 0.85rem;">(optional)</span></label>
+                <div id="tagsList" class="tags-container"></div>
+                <button onclick="showNewTagModal()" class="btn-secondary">+ New Tag</button>
+            </div>
+
+            <div class="action-buttons">
+                <button onclick="addPoints()" class="btn-add">➕ Add Points</button>
+                <button onclick="removePoints()" class="btn-remove">➖ Remove Points</button>
+            </div>
+        </div>
+
+        <!-- Activity Log -->
+        <div class="activity-log">
+            <h3>📋 Recent Activity</h3>
+            <div id="activityList" class="activity-list"></div>
+        </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div id="settingsModal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>⚙️ Settings</h2>
+                <button onclick="closeSettings()" class="close-btn">✕</button>
+            </div>
+            <div id="settingsContent"></div>
+        </div>
+    </div>
+
+    <!-- New Tag Modal -->
+    <div id="newTagModal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Create New Tag</h2>
+                <button onclick="closeNewTagModal()" class="close-btn">✕</button>
+            </div>
+            <div class="form-group">
+                <label>Tag Name</label>
+                <input type="text" id="newTagName" placeholder="e.g., Homework">
+            </div>
+            <div class="form-group">
+                <label>Type</label>
+                <select id="newTagType">
+                    <option value="1">Positive (earns points)</option>
+                    <option value="0">Negative (spends points)</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Color</label>
+                <div class="color-picker">
+                    <button class="color-btn" style="background: #FF6B6B" onclick="selectTagColor('#FF6B6B')"></button>
+                    <button class="color-btn" style="background: #4ECDC4" onclick="selectTagColor('#4ECDC4')"></button>
+                    <button class="color-btn" style="background: #45B7D1" onclick="selectTagColor('#45B7D1')"></button>
+                    <button class="color-btn" style="background: #96CEB4" onclick="selectTagColor('#96CEB4')"></button>
+                    <button class="color-btn" style="background: #FFEAA7" onclick="selectTagColor('#FFEAA7')"></button>
+                    <button class="color-btn" style="background: #DFE6E9" onclick="selectTagColor('#DFE6E9')"></button>
+                    <button class="color-btn" style="background: #A29BFE" onclick="selectTagColor('#A29BFE')"></button>
+                    <button class="color-btn" style="background: #FD79A8" onclick="selectTagColor('#FD79A8')"></button>
+                </div>
+            </div>
+            <button onclick="createNewTag()" class="btn-primary">Create Tag</button>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
