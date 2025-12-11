@@ -1,249 +1,293 @@
 const express = require('express');
 const bodyParser = require('body-parser');
-const Database = require('better-sqlite3');
-const path = require('path');
-
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Hardcoded authentication - CHANGE THIS PASSWORD!
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'parent123';
-
-// Middleware
 app.use(bodyParser.json());
 app.use(express.static('public'));
 
-// Initialize SQLite database
-const db = new Database('points.db');
+// --- DATABASE (Reset when server restarts) ---
+let kidsDb = [
+    { id: 1, name: "Kid 1", minutes: 0, color: "#4ECDC4" }
+];
+let historyLog = [];
+let customTags = ["Chores", "Clean Up", "Food", "Snacks", "TV"];
+let weeklyMinutes = 0;
 
-// Create tables
-db.exec(`
-  CREATE TABLE IF NOT EXISTS kids (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    initials TEXT NOT NULL,
-    color TEXT NOT NULL,
-    balance INTEGER DEFAULT 0
-  );
-
-  CREATE TABLE IF NOT EXISTS transactions (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    kid_id INTEGER NOT NULL,
-    points INTEGER NOT NULL,
-    tag TEXT NOT NULL,
-    note TEXT,
-    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (kid_id) REFERENCES kids(id)
-  );
-
-  CREATE TABLE IF NOT EXISTS tags (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT UNIQUE NOT NULL,
-    color TEXT NOT NULL,
-    is_positive INTEGER DEFAULT 1
-  );
-
-  CREATE TABLE IF NOT EXISTS sessions (
-    token TEXT PRIMARY KEY,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    expires_at DATETIME NOT NULL
-  );
-`);
-
-// Initialize default kids if none exist
-const existingKids = db.prepare('SELECT COUNT(*) as count FROM kids').get();
-if (existingKids.count === 0) {
-  db.prepare('INSERT INTO kids (name, initials, color, balance) VALUES (?, ?, ?, ?)').run('Kid 1', 'K1', '#FF6B6B', 0);
-  db.prepare('INSERT INTO kids (name, initials, color, balance) VALUES (?, ?, ?, ?)').run('Kid 2', 'K2', '#4ECDC4', 0);
-}
-
-// Initialize default tags
-const existingTags = db.prepare('SELECT COUNT(*) as count FROM tags').get();
-if (existingTags.count === 0) {
-  const defaultTags = [
-    { name: 'TV', color: '#9B59B6', is_positive: 0 },
-    { name: 'Snacks', color: '#E67E22', is_positive: 0 },
-    { name: 'Chores', color: '#27AE60', is_positive: 1 },
-    { name: 'Finish Food', color: '#3498DB', is_positive: 1 },
-    { name: 'Clean Up', color: '#1ABC9C', is_positive: 1 }
-  ];
-  
-  const insertTag = db.prepare('INSERT INTO tags (name, color, is_positive) VALUES (?, ?, ?)');
-  defaultTags.forEach(tag => insertTag.run(tag.name, tag.color, tag.is_positive));
-}
-
-// Generate session token
-function generateSessionToken() {
-  return require('crypto').randomBytes(32).toString('hex');
-}
-
-// Authentication middleware - checks both password and session token
-function authenticate(req, res, next) {
-  const password = req.headers['x-password'] || '';
-  const sessionToken = req.headers['x-session-token'] || '';
-  
-  // Check session token first
-  if (sessionToken) {
-    const session = db.prepare('SELECT * FROM sessions WHERE token = ? AND expires_at > datetime(\'now\')').get(sessionToken);
-    if (session) {
-      return next();
-    }
-  }
-  
-  // Fall back to password check
-  const trimmedPassword = password.trim();
-  if (trimmedPassword === ADMIN_PASSWORD) {
-    next();
-  } else {
-    res.status(401).json({ error: 'Unauthorized' });
-  }
-}
-
-// API Routes
-
-// Authentication endpoint
-app.post('/api/auth', (req, res) => {
-  const password = req.headers['x-password'] || '';
-  const trimmedPassword = password.trim();
-  
-  // Debug logging (remove in production)
-  console.log('Auth attempt:', {
-    received: password ? `"${password}" (length: ${password.length})` : 'empty',
-    expected: ADMIN_PASSWORD,
-    match: trimmedPassword === ADMIN_PASSWORD
-  });
-  
-  if (trimmedPassword === ADMIN_PASSWORD) {
-    try {
-      // Generate session token
-      const token = generateSessionToken();
-      const expiresAt = new Date();
-      expiresAt.setFullYear(expiresAt.getFullYear() + 1); // 1 year from now
-      
-      // Store session in database
-      const insertStmt = db.prepare('INSERT INTO sessions (token, expires_at) VALUES (?, ?)');
-      insertStmt.run(token, expiresAt.toISOString());
-      
-      console.log('Session created:', { token: token.substring(0, 20) + '...', expiresAt: expiresAt.toISOString() });
-      
-      res.json({ 
-        success: true, 
-        sessionToken: token,
-        expiresAt: expiresAt.toISOString()
-      });
-    } catch (error) {
-      console.error('Error creating session:', error);
-      res.status(500).json({ error: 'Failed to create session', details: error.message });
-    }
-  } else {
-    res.status(401).json({ error: 'Incorrect password' });
-  }
+// --- API ENDPOINTS ---
+app.get('/api/data', (req, res) => {
+    res.json({ kids: kidsDb, tags: customTags, history: historyLog, weekly_total: weeklyMinutes });
 });
 
-// Validate session endpoint
-app.get('/api/session/validate', (req, res) => {
-  const sessionToken = req.headers['x-session-token'] || '';
-  
-  if (!sessionToken) {
-    return res.status(401).json({ valid: false });
-  }
-  
-  const session = db.prepare('SELECT * FROM sessions WHERE token = ? AND expires_at > datetime(\'now\')').get(sessionToken);
-  
-  if (session) {
-    res.json({ valid: true });
-  } else {
-    res.status(401).json({ valid: false });
-  }
-});
-
-// Get all kids
-app.get('/api/kids', (req, res) => {
-  const kids = db.prepare('SELECT * FROM kids ORDER BY id').all();
-  res.json(kids);
-});
-
-// Update kid details
-app.put('/api/kids/:id', authenticate, (req, res) => {
-  const { name, initials, color } = req.body;
-  const stmt = db.prepare('UPDATE kids SET name = ?, initials = ?, color = ? WHERE id = ?');
-  stmt.run(name, initials, color, req.params.id);
-  res.json({ success: true });
-});
-
-// Add transaction
-app.post('/api/transactions', authenticate, (req, res) => {
-  const { kid_id, points, tag, note } = req.body;
-  
-  // Use default tag if not provided
-  const transactionTag = tag || 'General';
-  
-  // Insert transaction
-  const insertStmt = db.prepare('INSERT INTO transactions (kid_id, points, tag, note) VALUES (?, ?, ?, ?)');
-  insertStmt.run(kid_id, points, transactionTag, note || '');
-  
-  // Update kid balance
-  const updateStmt = db.prepare('UPDATE kids SET balance = balance + ? WHERE id = ?');
-  updateStmt.run(points, kid_id);
-  
-  // Get updated kid data
-  const kid = db.prepare('SELECT * FROM kids WHERE id = ?').get(kid_id);
-  
-  res.json({ success: true, kid });
-});
-
-// Get transactions (with optional kid_id filter)
-app.get('/api/transactions', (req, res) => {
-  const { kid_id, limit = 50 } = req.query;
-  
-  let query = 'SELECT t.*, k.name, k.initials, k.color FROM transactions t JOIN kids k ON t.kid_id = k.id';
-  let params = [];
-  
-  if (kid_id) {
-    query += ' WHERE t.kid_id = ?';
-    params.push(kid_id);
-  }
-  
-  query += ' ORDER BY t.timestamp DESC LIMIT ?';
-  params.push(parseInt(limit));
-  
-  const stmt = db.prepare(query);
-  const transactions = stmt.all(...params);
-  
-  res.json(transactions);
-});
-
-// Get all tags
-app.get('/api/tags', (req, res) => {
-  const tags = db.prepare('SELECT * FROM tags ORDER BY name').all();
-  res.json(tags);
-});
-
-// Add new tag
-app.post('/api/tags', authenticate, (req, res) => {
-  const { name, color, is_positive } = req.body;
-  
-  try {
-    const stmt = db.prepare('INSERT INTO tags (name, color, is_positive) VALUES (?, ?, ?)');
-    stmt.run(name, color, is_positive ? 1 : 0);
+app.post('/api/add_kid', (req, res) => {
+    const newId = Date.now();
+    const colors = ["#FF6B6B", "#4ECDC4", "#45B7D1", "#FDCB6E"];
+    const color = colors[kidsDb.length % colors.length];
+    kidsDb.push({ id: newId, name: `Kid ${kidsDb.length + 1}`, minutes: 0, color: color });
     res.json({ success: true });
-  } catch (error) {
-    res.status(400).json({ error: 'Tag already exists' });
-  }
 });
 
-// Serve main page
+app.post('/api/remove_kid/:id', (req, res) => {
+    kidsDb = kidsDb.filter(k => k.id !== parseInt(req.params.id));
+    res.json({ success: true });
+});
+
+app.post('/api/update_name/:id', (req, res) => {
+    const kid = kidsDb.find(k => k.id === parseInt(req.params.id));
+    if (kid) kid.name = req.body.name;
+    res.json({ success: true });
+});
+
+app.post('/api/add_time', (req, res) => {
+    const { kid_id, minutes, tag } = req.body;
+    const kid = kidsDb.find(k => k.id === kid_id);
+    if (kid) {
+        kid.minutes += minutes;
+        if (kid.minutes < 0) kid.minutes = 0;
+        if (minutes > 0) {
+            weeklyMinutes += minutes;
+            const timestamp = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+            historyLog.unshift(`${timestamp} - ${kid.name}: +${minutes}m (${tag})`);
+        }
+        res.json({ success: true });
+    } else {
+        res.json({ success: false });
+    }
+});
+
+app.post('/api/add_tag', (req, res) => {
+    if (req.body.tag && !customTags.includes(req.body.tag)) customTags.push(req.body.tag);
+    res.json({ success: true });
+});
+
+// --- SERVE THE HTML DIRECTLY (Fixes file path issues) ---
 app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+    res.send(`
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Minute Tracker</title>
+    <style>
+        :root { --bg-start: #667eea; --bg-end: #764ba2; --kid-red: #FF6B6B; --kid-teal: #4ECDC4; }
+        body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #F0F8FF; display: flex; flex-direction: column; height: 100vh; }
+        
+        /* Login */
+        #login-screen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(to bottom right, var(--bg-start), var(--bg-end)); display: flex; justify-content: center; align-items: center; z-index: 1000; }
+        .login-box { background: white; padding: 2rem; border-radius: 20px; text-align: center; width: 80%; max-width: 300px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); }
+        input.login-input { padding: 10px; margin: 10px 0; border: 1px solid #ccc; border-radius: 8px; width: 90%; font-size: 16px; }
+        
+        /* App Layout */
+        .header { background: linear-gradient(to right, var(--bg-start), var(--bg-end)); padding: 20px; color: white; text-align: center; }
+        .tabs { display: flex; background: rgba(0,0,0,0.1); }
+        .tab { flex: 1; padding: 15px; text-align: center; color: white; cursor: pointer; font-weight: bold; opacity: 0.7; }
+        .tab.active { opacity: 1; border-bottom: 3px solid white; background: rgba(255,255,255,0.1); }
+        
+        .content-area { flex: 1; overflow-y: auto; padding: 20px; padding-bottom: 100px; }
+        
+        /* Kid Card */
+        .kid-card { background: white; border-radius: 20px; padding: 15px; margin-bottom: 15px; display: flex; flex-direction: column; align-items: center; position: relative; box-shadow: 0 4px 10px rgba(0,0,0,0.05); border: 3px solid transparent; transition: all 0.2s; }
+        .kid-card.selected { border-color: var(--bg-start); background-color: #F3F4FF; transform: scale(1.01); }
+        
+        .delete-btn { position: absolute; top: 10px; right: 10px; background: var(--kid-red); color: white; border: none; border-radius: 50%; width: 30px; height: 30px; cursor: pointer; font-weight: bold; }
+        
+        .kid-name-input { font-size: 24px; font-weight: bold; text-align: center; border: none; background: transparent; width: 80%; outline: none; margin-bottom: 5px; color: #333; border-bottom: 1px dashed #ccc; }
+        .kid-minutes { font-size: 36px; font-weight: 800; }
+        
+        /* Controls */
+        .controls { background: white; padding: 20px; border-top-left-radius: 25px; border-top-right-radius: 25px; box-shadow: 0 -5px 30px rgba(0,0,0,0.15); position: fixed; bottom: 0; width: 100%; box-sizing: border-box; }
+        
+        .tags-wrapper { overflow-x: auto; white-space: nowrap; margin-bottom: 15px; padding-bottom: 5px; -webkit-overflow-scrolling: touch; }
+        .tag-btn { display: inline-block; padding: 8px 16px; margin-right: 8px; border-radius: 20px; border: none; cursor: pointer; color: white; font-weight: bold; font-size: 14px; background: #9B59B6; }
+        .tag-btn.add { background: #E0E0E0; color: #555; }
+        
+        .time-buttons { display: flex; gap: 8px; }
+        .time-btn { flex: 1; padding: 12px; border-radius: 12px; border: none; color: white; font-weight: bold; cursor: pointer; font-size: 16px; }
+        
+        /* History */
+        .history-item { background: white; padding: 12px; margin-bottom: 8px; border-radius: 10px; border-left: 5px solid var(--bg-start); font-size: 14px; color: #333; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+    </style>
+</head>
+<body>
+    <div id="login-screen">
+        <div class="login-box">
+            <h2>🔐 Login</h2>
+            <input type="password" id="password" class="login-input" placeholder="Password">
+            <button class="time-btn" style="background: var(--kid-teal); width: 100%;" onclick="login()">Enter</button>
+        </div>
+    </div>
+
+    <div id="app-container" style="display:none; height: 100%; flex-direction: column;">
+        <div class="header">
+            <h2 style="margin:0;">⭐ Minute Tracker</h2>
+            <div style="font-size: 14px; opacity: 0.9; margin-top: 5px;">Today's Total: <span id="daily-val">0</span>m</div>
+        </div>
+
+        <div class="tabs">
+            <div class="tab active" onclick="switchTab('daily')" id="tab-daily">Tracker</div>
+            <div class="tab" onclick="switchTab('weekly')" id="tab-weekly">History</div>
+        </div>
+
+        <div id="view-daily" class="content-area">
+            <div id="kids-container"></div>
+            <button onclick="addKid()" style="width:100%; padding:15px; background:#e0e0e0; color:#555; border:none; border-radius:15px; font-weight:bold; font-size: 16px;">+ Add Another Kid</button>
+        </div>
+
+        <div id="view-weekly" class="content-area" style="display:none;">
+            <h3 style="color:#333;">Weekly Summary</h3>
+            <div style="font-size: 28px; font-weight:bold; color:#FDCB6E; margin-bottom: 20px;">
+                Total: <span id="weekly-total-display">0</span>m
+            </div>
+            <div id="history-log"></div>
+        </div>
+
+        <div class="controls" id="controls-panel">
+            <div style="text-align: center; color: #888; font-weight: bold; margin-bottom: 10px; font-size: 14px;" id="selected-status">Tap a kid above to start</div>
+            
+            <div class="tags-wrapper" id="tags-container"></div>
+
+            <div class="time-buttons">
+                <button class="time-btn" style="background: var(--kid-red)" onclick="addTime(-5)">- Remove</button>
+                <button class="time-btn" style="background: #667eea" onclick="addTime(5)">+5m</button>
+                <button class="time-btn" style="background: #764ba2" onclick="addTime(15)">+15m</button>
+                <button class="time-btn" style="background: var(--kid-teal)" onclick="addTime(30)">+30m</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let kids = [];
+        let selectedKidId = -1;
+        let currentTag = "General";
+
+        function login() {
+            if(document.getElementById('password').value) {
+                document.getElementById('login-screen').style.display = 'none';
+                document.getElementById('app-container').style.display = 'flex';
+                loadData();
+            }
+        }
+
+        async function loadData() {
+            try {
+                const res = await fetch('/api/data');
+                const data = await res.json();
+                kids = data.kids;
+                document.getElementById('weekly-total-display').innerText = data.weekly_total;
+                renderKids();
+                renderTags(data.tags);
+                renderHistory(data.history);
+            } catch(e) { console.log(e); }
+        }
+
+        function renderKids() {
+            const container = document.getElementById('kids-container');
+            container.innerHTML = '';
+            let dailyTotal = 0;
+            kids.forEach(kid => {
+                dailyTotal += kid.minutes;
+                const card = document.createElement('div');
+                card.className = \`kid-card \${kid.id === selectedKidId ? 'selected' : ''}\`;
+                card.onclick = (e) => {
+                    if(e.target.tagName === 'INPUT' || e.target.className === 'delete-btn') return;
+                    selectedKidId = kid.id;
+                    document.getElementById('selected-status').innerText = \`Selected: \${kid.name}\`;
+                    document.getElementById('selected-status').style.color = kid.color;
+                    renderKids();
+                };
+                card.innerHTML = \`
+                    <button class="delete-btn" onclick="removeKid(\${kid.id})">✕</button>
+                    <input class="kid-name-input" value="\${kid.name}" onchange="updateName(\${kid.id}, this.value)">
+                    <div class="kid-minutes" style="color: \${kid.color}">\${kid.minutes} min</div>
+                \`;
+                container.appendChild(card);
+            });
+            document.getElementById('daily-val').innerText = dailyTotal;
+        }
+
+        function renderTags(tags) {
+            const container = document.getElementById('tags-container');
+            container.innerHTML = '';
+            tags.forEach(tag => {
+                const btn = document.createElement('button');
+                btn.className = 'tag-btn';
+                btn.innerText = tag;
+                btn.onclick = () => { currentTag = tag; alert(\`Activity set: \${tag}\`); };
+                container.appendChild(btn);
+            });
+            const addBtn = document.createElement('button');
+            addBtn.className = 'tag-btn add';
+            addBtn.innerText = '+';
+            addBtn.onclick = addNewTag;
+            container.appendChild(addBtn);
+        }
+
+        function renderHistory(history) {
+            const container = document.getElementById('history-log');
+            container.innerHTML = '';
+            history.forEach(entry => {
+                const div = document.createElement('div');
+                div.className = 'history-item';
+                div.innerText = entry;
+                container.appendChild(div);
+            });
+        }
+
+        function switchTab(tab) {
+            document.getElementById('view-daily').style.display = tab === 'daily' ? 'block' : 'none';
+            document.getElementById('view-weekly').style.display = tab === 'weekly' ? 'block' : 'none';
+            document.getElementById('controls-panel').style.display = tab === 'daily' ? 'block' : 'none';
+            document.getElementById('tab-daily').classList.toggle('active', tab === 'daily');
+            document.getElementById('tab-weekly').classList.toggle('active', tab === 'weekly');
+        }
+
+        async function addKid() {
+            await fetch('/api/add_kid', {method: 'POST'});
+            loadData();
+        }
+
+        async function removeKid(id) {
+            if(!confirm('Delete this kid?')) return;
+            await fetch(\`/api/remove_kid/\${id}\`, {method: 'POST'});
+            loadData();
+        }
+
+        async function updateName(id, newName) {
+            await fetch(\`/api/update_name/\${id}\`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({name: newName})
+            });
+        }
+
+        async function addNewTag() {
+            const tag = prompt("New Activity Name:");
+            if(tag) {
+                await fetch('/api/add_tag', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({tag: tag})
+                });
+                loadData();
+            }
+        }
+
+        async function addTime(minutes) {
+            if(selectedKidId === -1) { alert("Select a kid first!"); return; }
+            await fetch('/api/add_time', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({kid_id: selectedKidId, minutes: minutes, tag: currentTag})
+            });
+            loadData();
+        }
+    </script>
+</body>
+</html>
+    `);
 });
 
-// Clean up expired sessions on startup
-db.prepare('DELETE FROM sessions WHERE expires_at <= datetime(\'now\')').run();
-
-// Start server
 app.listen(PORT, () => {
-  console.log(`\n🎮 Kids Points Tracker is running!`);
-  console.log(`📱 Open: http://localhost:${PORT}`);
-  console.log(`🔐 Password: ${ADMIN_PASSWORD}`);
-  console.log(`⏰ Sessions persist for 1 year\n`);
+    console.log(`Server running on port ${PORT}`);
 });
