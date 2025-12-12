@@ -10,12 +10,13 @@ app.use(express.static('public'));
 let kidsDb = [
     { id: 1, name: "Kid 1", minutes: 0, color: "#4ECDC4" }
 ];
-let historyLog = []; // Stores objects: { timestamp, text }
+// History Log: Storing simple strings to prevent [object Object] error
+let historyLog = []; 
 let customTags = ["Chores", "Homework", "Reading", "Clean Up"];
 let presets = [5, 10, 15, 30]; 
 let weeklyMinutes = 0;
 
-// --- API ---
+// --- API ENDPOINTS ---
 app.get('/api/data', (req, res) => {
     res.json({ 
         kids: kidsDb, 
@@ -59,17 +60,13 @@ app.post('/api/remove_tag', (req, res) => {
 app.post('/api/rename_tag', (req, res) => {
     const { oldTag, newTag } = req.body;
     const index = customTags.indexOf(oldTag);
-    if (index !== -1 && newTag) {
-        customTags[index] = newTag;
-    }
+    if (index !== -1 && newTag) customTags[index] = newTag;
     res.json({ success: true });
 });
 
 app.post('/api/update_preset', (req, res) => {
     const { index, value } = req.body;
-    if (index >= 0 && index < presets.length) {
-        presets[index] = parseInt(value) || 0;
-    }
+    if (index >= 0 && index < presets.length) presets[index] = parseInt(value) || 0;
     res.json({ success: true });
 });
 
@@ -82,11 +79,12 @@ app.post('/api/add_time', (req, res) => {
         
         if (minutes > 0) {
             weeklyMinutes += minutes;
-            // We store the raw timestamp so the FRONTEND can format it nicely
-            historyLog.unshift({
-                timestamp: Date.now(),
-                text: `${kid.name}: +${minutes}m (${tag})`
-            });
+            // Create the date string HERE to keep it simple
+            const now = new Date();
+            const dateStr = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            const timeStr = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+            // Save as a STRING to fix [object Object]
+            historyLog.unshift(`${dateStr}, ${timeStr} - ${kid.name}: +${minutes}m (${tag})`);
         }
         res.json({ success: true });
     } else {
@@ -94,9 +92,9 @@ app.post('/api/add_time', (req, res) => {
     }
 });
 
-// --- FRONTEND (With Cache-Busting Headers) ---
+// --- FRONTEND ---
 app.get('/', (req, res) => {
-    // Prevent browser from caching the HTML to fix the "Object" error
+    // Disable caching so you always see the latest version
     res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
     
     res.send(`
@@ -148,9 +146,7 @@ app.get('/', (req, res) => {
         
         .action-btn { width: 100%; padding: 15px; border-radius: 15px; border: none; color: white; font-weight: bold; font-size: 16px; cursor: pointer; margin-top: 5px; background: var(--kid-red); }
         
-        .date-header { font-weight: 800; color: #888; margin: 25px 0 10px 5px; font-size: 16px; }
-        .history-item { background: white; padding: 15px; margin-bottom: 10px; border-radius: 12px; border-left: 5px solid var(--bg-start); font-size: 15px; color: #444; box-shadow: 0 2px 5px rgba(0,0,0,0.05); display: flex; justify-content: space-between; align-items: center; }
-        .history-time { font-size: 12px; color: #aaa; background: #f5f5f5; padding: 4px 8px; border-radius: 10px; }
+        .history-item { background: white; padding: 15px; margin-bottom: 10px; border-radius: 12px; border-left: 5px solid var(--bg-start); font-size: 15px; color: #444; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
     </style>
 </head>
 <body>
@@ -257,25 +253,10 @@ app.get('/', (req, res) => {
 
         function renderHistory(history) {
             const container = document.getElementById('history-log'); container.innerHTML = '';
-            let lastDate = "";
-            const now = new Date();
-            const yesterday = new Date(now); yesterday.setDate(yesterday.getDate() - 1);
-
             history.forEach(entry => {
-                const dateObj = new Date(entry.timestamp);
-                let dateStr = dateObj.toDateString();
-                
-                if (dateStr === now.toDateString()) dateStr = "Today";
-                else if (dateStr === yesterday.toDateString()) dateStr = "Yesterday";
-                else dateStr = dateObj.toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric'});
-
-                if(dateStr !== lastDate) {
-                    const header = document.createElement('div'); header.className = 'date-header'; header.innerText = dateStr;
-                    container.appendChild(header); lastDate = dateStr;
-                }
-                const div = document.createElement('div'); div.className = 'history-item';
-                const timeStr = dateObj.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-                div.innerHTML = \`<span>\${entry.text}</span> <span class="history-time">\${timeStr}</span>\`;
+                const div = document.createElement('div');
+                div.className = 'history-item';
+                div.innerText = entry;
                 container.appendChild(div);
             });
         }
