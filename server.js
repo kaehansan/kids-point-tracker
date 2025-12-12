@@ -6,12 +6,12 @@ const PORT = process.env.PORT || 3000;
 app.use(bodyParser.json());
 app.use(express.static('public'));
 
-// --- DATABASE (Reset when server restarts) ---
+// --- DATABASE (Resets on restart) ---
 let kidsDb = [
     { id: 1, name: "Kid 1", minutes: 0, color: "#4ECDC4" }
 ];
 let historyLog = [];
-let customTags = ["Chores", "Clean Up", "Food", "Snacks", "TV"];
+let customTags = ["Chores", "Homework", "Reading", "Clean Up"];
 let weeklyMinutes = 0;
 
 // --- API ENDPOINTS ---
@@ -21,7 +21,7 @@ app.get('/api/data', (req, res) => {
 
 app.post('/api/add_kid', (req, res) => {
     const newId = Date.now();
-    const colors = ["#FF6B6B", "#4ECDC4", "#45B7D1", "#FDCB6E"];
+    const colors = ["#FF6B6B", "#4ECDC4", "#45B7D1", "#FDCB6E", "#9B59B6"];
     const color = colors[kidsDb.length % colors.length];
     kidsDb.push({ id: newId, name: `Kid ${kidsDb.length + 1}`, minutes: 0, color: color });
     res.json({ success: true });
@@ -38,15 +38,28 @@ app.post('/api/update_name/:id', (req, res) => {
     res.json({ success: true });
 });
 
+app.post('/api/add_tag', (req, res) => {
+    if (req.body.tag && !customTags.includes(req.body.tag)) customTags.push(req.body.tag);
+    res.json({ success: true });
+});
+
+app.post('/api/remove_tag', (req, res) => {
+    customTags = customTags.filter(t => t !== req.body.tag);
+    res.json({ success: true });
+});
+
 app.post('/api/add_time', (req, res) => {
     const { kid_id, minutes, tag } = req.body;
     const kid = kidsDb.find(k => k.id === kid_id);
     if (kid) {
         kid.minutes += minutes;
         if (kid.minutes < 0) kid.minutes = 0;
+        
+        // Log History (Only for positive adds)
         if (minutes > 0) {
             weeklyMinutes += minutes;
-            const timestamp = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+            const now = new Date();
+            const timestamp = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
             historyLog.unshift(`${timestamp} - ${kid.name}: +${minutes}m (${tag})`);
         }
         res.json({ success: true });
@@ -55,12 +68,7 @@ app.post('/api/add_time', (req, res) => {
     }
 });
 
-app.post('/api/add_tag', (req, res) => {
-    if (req.body.tag && !customTags.includes(req.body.tag)) customTags.push(req.body.tag);
-    res.json({ success: true });
-});
-
-// --- SERVE THE HTML DIRECTLY (Fixes file path issues) ---
+// --- FRONTEND ---
 app.get('/', (req, res) => {
     res.send(`
 <!DOCTYPE html>
@@ -71,56 +79,72 @@ app.get('/', (req, res) => {
     <title>Minute Tracker</title>
     <style>
         :root { --bg-start: #667eea; --bg-end: #764ba2; --kid-red: #FF6B6B; --kid-teal: #4ECDC4; }
-        body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #F0F8FF; display: flex; flex-direction: column; height: 100vh; }
+        body { margin: 0; font-family: system-ui, -apple-system, sans-serif; background-color: #F0F8FF; display: flex; flex-direction: column; height: 100vh; }
         
         /* Login */
         #login-screen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(to bottom right, var(--bg-start), var(--bg-end)); display: flex; justify-content: center; align-items: center; z-index: 1000; }
-        .login-box { background: white; padding: 2rem; border-radius: 20px; text-align: center; width: 80%; max-width: 300px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); }
-        input.login-input { padding: 10px; margin: 10px 0; border: 1px solid #ccc; border-radius: 8px; width: 90%; font-size: 16px; }
+        .login-box { background: white; padding: 2rem; border-radius: 20px; text-align: center; width: 90%; max-width: 320px; box-shadow: 0 10px 30px rgba(0,0,0,0.2); }
+        .login-input { padding: 12px; margin: 15px 0; border: 2px solid #eee; border-radius: 12px; width: 80%; font-size: 18px; text-align: center; }
         
-        /* App Layout */
-        .header { background: linear-gradient(to right, var(--bg-start), var(--bg-end)); padding: 20px; color: white; text-align: center; }
-        .tabs { display: flex; background: rgba(0,0,0,0.1); }
-        .tab { flex: 1; padding: 15px; text-align: center; color: white; cursor: pointer; font-weight: bold; opacity: 0.7; }
-        .tab.active { opacity: 1; border-bottom: 3px solid white; background: rgba(255,255,255,0.1); }
+        /* App Structure */
+        .header { background: linear-gradient(to right, var(--bg-start), var(--bg-end)); padding: 20px; color: white; text-align: center; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .content-area { flex: 1; overflow-y: auto; padding: 20px; padding-bottom: 220px; } /* Space for controls */
         
-        .content-area { flex: 1; overflow-y: auto; padding: 20px; padding-bottom: 100px; }
+        /* Tabs */
+        .tabs { display: flex; background: white; border-bottom: 1px solid #eee; }
+        .tab { flex: 1; padding: 15px; text-align: center; color: #888; cursor: pointer; font-weight: bold; }
+        .tab.active { color: var(--bg-start); border-bottom: 3px solid var(--bg-start); background: #F8F9FF; }
+
+        /* Kid Cards */
+        .kid-card { background: white; border-radius: 20px; padding: 15px; margin-bottom: 15px; display: flex; flex-direction: column; align-items: center; position: relative; box-shadow: 0 4px 15px rgba(0,0,0,0.05); border: 3px solid transparent; transition: all 0.2s; }
+        .kid-card.selected { border-color: var(--bg-start); background-color: #F0F2FF; transform: scale(1.02); }
         
-        /* Kid Card */
-        .kid-card { background: white; border-radius: 20px; padding: 15px; margin-bottom: 15px; display: flex; flex-direction: column; align-items: center; position: relative; box-shadow: 0 4px 10px rgba(0,0,0,0.05); border: 3px solid transparent; transition: all 0.2s; }
-        .kid-card.selected { border-color: var(--bg-start); background-color: #F3F4FF; transform: scale(1.01); }
+        .delete-btn { position: absolute; top: 10px; right: 10px; background: #FFEBEE; color: var(--kid-red); border: none; border-radius: 50%; width: 32px; height: 32px; cursor: pointer; font-weight: bold; font-size: 16px; display: flex; align-items: center; justify-content: center; }
+        .kid-name-input { font-size: 24px; font-weight: 800; text-align: center; border: none; background: transparent; width: 80%; outline: none; margin-bottom: 5px; color: #333; }
+        .kid-minutes { font-size: 40px; font-weight: 900; letter-spacing: -1px; }
+
+        /* Controls Panel */
+        .controls { background: white; padding: 20px; border-top-left-radius: 30px; border-top-right-radius: 30px; box-shadow: 0 -10px 40px rgba(0,0,0,0.1); position: fixed; bottom: 0; width: 100%; box-sizing: border-box; z-index: 100; }
         
-        .delete-btn { position: absolute; top: 10px; right: 10px; background: var(--kid-red); color: white; border: none; border-radius: 50%; width: 30px; height: 30px; cursor: pointer; font-weight: bold; }
-        
-        .kid-name-input { font-size: 24px; font-weight: bold; text-align: center; border: none; background: transparent; width: 80%; outline: none; margin-bottom: 5px; color: #333; border-bottom: 1px dashed #ccc; }
-        .kid-minutes { font-size: 36px; font-weight: 800; }
-        
-        /* Controls */
-        .controls { background: white; padding: 20px; border-top-left-radius: 25px; border-top-right-radius: 25px; box-shadow: 0 -5px 30px rgba(0,0,0,0.15); position: fixed; bottom: 0; width: 100%; box-sizing: border-box; }
-        
+        /* Tags */
         .tags-wrapper { overflow-x: auto; white-space: nowrap; margin-bottom: 15px; padding-bottom: 5px; -webkit-overflow-scrolling: touch; }
-        .tag-btn { display: inline-block; padding: 8px 16px; margin-right: 8px; border-radius: 20px; border: none; cursor: pointer; color: white; font-weight: bold; font-size: 14px; background: #9B59B6; }
-        .tag-btn.add { background: #E0E0E0; color: #555; }
-        
-        .time-buttons { display: flex; gap: 8px; }
-        .time-btn { flex: 1; padding: 12px; border-radius: 12px; border: none; color: white; font-weight: bold; cursor: pointer; font-size: 16px; }
-        
+        .tag-btn { position: relative; display: inline-flex; align-items: center; padding: 8px 16px; margin-right: 8px; border-radius: 20px; border: none; cursor: pointer; color: white; font-weight: bold; font-size: 14px; background: #9B59B6; padding-right: 32px; }
+        .tag-btn.add { background: #eee; color: #555; padding-right: 16px; }
+        .tag-delete { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); width: 20px; height: 20px; background: rgba(0,0,0,0.2); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; line-height: 1; }
+
+        /* Manual Input Section */
+        .manual-section { display: flex; align-items: center; justify-content: space-between; margin-bottom: 15px; background: #F8F9FA; padding: 10px; border-radius: 15px; }
+        .stepper-btn { width: 45px; height: 45px; border-radius: 12px; border: none; background: var(--bg-start); color: white; font-size: 24px; font-weight: bold; cursor: pointer; }
+        #manual-input { width: 80px; text-align: center; font-size: 24px; font-weight: bold; border: none; background: transparent; color: #333; }
+
+        /* 4 Editable Boxes */
+        .presets-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 15px; }
+        .preset-box { display: flex; flex-direction: column; gap: 5px; }
+        .preset-input { width: 100%; text-align: center; border: 1px solid #ddd; border-radius: 8px; padding: 5px; font-size: 14px; box-sizing: border-box; }
+        .preset-btn { width: 100%; padding: 10px 0; background: #E0E7FF; color: var(--bg-start); border: none; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 14px; }
+        .preset-btn:active { background: var(--bg-start); color: white; }
+
+        /* Big Action Buttons */
+        .actions-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .action-btn { padding: 15px; border-radius: 15px; border: none; color: white; font-weight: bold; font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; }
+
         /* History */
-        .history-item { background: white; padding: 12px; margin-bottom: 8px; border-radius: 10px; border-left: 5px solid var(--bg-start); font-size: 14px; color: #333; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+        .history-item { background: white; padding: 15px; margin-bottom: 10px; border-radius: 12px; border-left: 5px solid var(--bg-start); font-size: 15px; color: #444; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
     </style>
 </head>
 <body>
+
     <div id="login-screen">
         <div class="login-box">
             <h2>🔐 Login</h2>
-            <input type="password" id="password" class="login-input" placeholder="Password">
-            <button class="time-btn" style="background: var(--kid-teal); width: 100%;" onclick="login()">Enter</button>
+            <input type="password" id="password" class="login-input" placeholder="Enter Password">
+            <button class="action-btn" style="background: var(--kid-teal); width: 100%;" onclick="login()">Start Tracking</button>
         </div>
     </div>
 
     <div id="app-container" style="display:none; height: 100%; flex-direction: column;">
         <div class="header">
-            <h2 style="margin:0;">⭐ Minute Tracker</h2>
+            <h2 style="margin:0;">Minute Tracker</h2>
             <div style="font-size: 14px; opacity: 0.9; margin-top: 5px;">Today's Total: <span id="daily-val">0</span>m</div>
         </div>
 
@@ -131,27 +155,51 @@ app.get('/', (req, res) => {
 
         <div id="view-daily" class="content-area">
             <div id="kids-container"></div>
-            <button onclick="addKid()" style="width:100%; padding:15px; background:#e0e0e0; color:#555; border:none; border-radius:15px; font-weight:bold; font-size: 16px;">+ Add Another Kid</button>
+            <button onclick="addKid()" style="width:100%; padding:15px; background:#f0f0f0; color:#666; border:2px dashed #ccc; border-radius:15px; font-weight:bold; font-size: 16px; margin-top:10px;">+ Add Another Kid</button>
         </div>
 
         <div id="view-weekly" class="content-area" style="display:none;">
-            <h3 style="color:#333;">Weekly Summary</h3>
-            <div style="font-size: 28px; font-weight:bold; color:#FDCB6E; margin-bottom: 20px;">
-                Total: <span id="weekly-total-display">0</span>m
+            <div style="background: white; padding: 20px; border-radius: 20px; margin-bottom: 20px; text-align: center;">
+                <div style="color: #888; font-size: 14px;">Total Minutes Earned</div>
+                <div style="font-size: 48px; font-weight:900; color:#FDCB6E;"><span id="weekly-total-display">0</span>m</div>
             </div>
+            <h3 style="color:#333; margin-left: 5px;">Activity Log</h3>
             <div id="history-log"></div>
         </div>
 
         <div class="controls" id="controls-panel">
-            <div style="text-align: center; color: #888; font-weight: bold; margin-bottom: 10px; font-size: 14px;" id="selected-status">Tap a kid above to start</div>
+            <div style="text-align: center; color: #888; font-weight: bold; margin-bottom: 15px; font-size: 14px;" id="selected-status">Tap a kid above to start</div>
             
             <div class="tags-wrapper" id="tags-container"></div>
 
-            <div class="time-buttons">
-                <button class="time-btn" style="background: var(--kid-red)" onclick="addTime(-5)">- Remove</button>
-                <button class="time-btn" style="background: #667eea" onclick="addTime(5)">+5m</button>
-                <button class="time-btn" style="background: #764ba2" onclick="addTime(15)">+15m</button>
-                <button class="time-btn" style="background: var(--kid-teal)" onclick="addTime(30)">+30m</button>
+            <div class="manual-section">
+                <button class="stepper-btn" onclick="adjustManual(-1)">-</button>
+                <input type="number" id="manual-input" value="5">
+                <button class="stepper-btn" onclick="adjustManual(1)">+</button>
+            </div>
+
+            <div class="presets-grid">
+                <div class="preset-box">
+                    <input type="number" class="preset-input" id="p1-val" value="5">
+                    <button class="preset-btn" onclick="usePreset('p1-val')">Add</button>
+                </div>
+                <div class="preset-box">
+                    <input type="number" class="preset-input" id="p2-val" value="10">
+                    <button class="preset-btn" onclick="usePreset('p2-val')">Add</button>
+                </div>
+                <div class="preset-box">
+                    <input type="number" class="preset-input" id="p3-val" value="15">
+                    <button class="preset-btn" onclick="usePreset('p3-val')">Add</button>
+                </div>
+                <div class="preset-box">
+                    <input type="number" class="preset-input" id="p4-val" value="30">
+                    <button class="preset-btn" onclick="usePreset('p4-val')">Add</button>
+                </div>
+            </div>
+
+            <div class="actions-grid">
+                <button class="action-btn" style="background: var(--kid-red)" onclick="applyManual(false)">- Remove</button>
+                <button class="action-btn" style="background: var(--kid-teal)" onclick="applyManual(true)">+ Add Points</button>
             </div>
         </div>
     </div>
@@ -170,15 +218,13 @@ app.get('/', (req, res) => {
         }
 
         async function loadData() {
-            try {
-                const res = await fetch('/api/data');
-                const data = await res.json();
-                kids = data.kids;
-                document.getElementById('weekly-total-display').innerText = data.weekly_total;
-                renderKids();
-                renderTags(data.tags);
-                renderHistory(data.history);
-            } catch(e) { console.log(e); }
+            const res = await fetch('/api/data');
+            const data = await res.json();
+            kids = data.kids;
+            document.getElementById('weekly-total-display').innerText = data.weekly_total;
+            renderKids();
+            renderTags(data.tags);
+            renderHistory(data.history);
         }
 
         function renderKids() {
@@ -190,7 +236,7 @@ app.get('/', (req, res) => {
                 const card = document.createElement('div');
                 card.className = \`kid-card \${kid.id === selectedKidId ? 'selected' : ''}\`;
                 card.onclick = (e) => {
-                    if(e.target.tagName === 'INPUT' || e.target.className === 'delete-btn') return;
+                    if(['INPUT', 'BUTTON'].includes(e.target.tagName) || e.target.classList.contains('delete-btn')) return;
                     selectedKidId = kid.id;
                     document.getElementById('selected-status').innerText = \`Selected: \${kid.name}\`;
                     document.getElementById('selected-status').style.color = kid.color;
@@ -199,7 +245,7 @@ app.get('/', (req, res) => {
                 card.innerHTML = \`
                     <button class="delete-btn" onclick="removeKid(\${kid.id})">✕</button>
                     <input class="kid-name-input" value="\${kid.name}" onchange="updateName(\${kid.id}, this.value)">
-                    <div class="kid-minutes" style="color: \${kid.color}">\${kid.minutes} min</div>
+                    <div class="kid-minutes" style="color: \${kid.color}">\${kid.minutes} m</div>
                 \`;
                 container.appendChild(card);
             });
@@ -210,17 +256,17 @@ app.get('/', (req, res) => {
             const container = document.getElementById('tags-container');
             container.innerHTML = '';
             tags.forEach(tag => {
-                const btn = document.createElement('button');
+                const btn = document.createElement('div');
                 btn.className = 'tag-btn';
-                btn.innerText = tag;
-                btn.onclick = () => { currentTag = tag; alert(\`Activity set: \${tag}\`); };
+                btn.innerHTML = \`\${tag} <span class="tag-delete" onclick="removeTag(event, '\${tag}')">✕</span>\`;
+                btn.onclick = (e) => { 
+                    if(e.target.className === 'tag-delete') return;
+                    currentTag = tag; 
+                    alert(\`Activity set: \${tag}\`); 
+                };
                 container.appendChild(btn);
             });
-            const addBtn = document.createElement('button');
-            addBtn.className = 'tag-btn add';
-            addBtn.innerText = '+';
-            addBtn.onclick = addNewTag;
-            container.appendChild(addBtn);
+            container.innerHTML += \`<button class="tag-btn add" onclick="addNewTag()">+ New</button>\`;
         }
 
         function renderHistory(history) {
@@ -234,53 +280,57 @@ app.get('/', (req, res) => {
             });
         }
 
-        function switchTab(tab) {
-            document.getElementById('view-daily').style.display = tab === 'daily' ? 'block' : 'none';
-            document.getElementById('view-weekly').style.display = tab === 'weekly' ? 'block' : 'none';
-            document.getElementById('controls-panel').style.display = tab === 'daily' ? 'block' : 'none';
-            document.getElementById('tab-daily').classList.toggle('active', tab === 'daily');
-            document.getElementById('tab-weekly').classList.toggle('active', tab === 'weekly');
+        // --- ACTIONS ---
+        function adjustManual(amount) {
+            const input = document.getElementById('manual-input');
+            let val = parseInt(input.value) || 0;
+            val += amount;
+            if(val < 1) val = 1;
+            input.value = val;
         }
 
-        async function addKid() {
-            await fetch('/api/add_kid', {method: 'POST'});
-            loadData();
+        function usePreset(inputId) {
+            const val = parseInt(document.getElementById(inputId).value);
+            if(val) addTime(val);
         }
 
-        async function removeKid(id) {
-            if(!confirm('Delete this kid?')) return;
-            await fetch(\`/api/remove_kid/\${id}\`, {method: 'POST'});
-            loadData();
-        }
-
-        async function updateName(id, newName) {
-            await fetch(\`/api/update_name/\${id}\`, {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({name: newName})
-            });
-        }
-
-        async function addNewTag() {
-            const tag = prompt("New Activity Name:");
-            if(tag) {
-                await fetch('/api/add_tag', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({tag: tag})
-                });
-                loadData();
-            }
+        async function applyManual(isAdd) {
+            const val = parseInt(document.getElementById('manual-input').value);
+            if(val) addTime(isAdd ? val : -val);
         }
 
         async function addTime(minutes) {
-            if(selectedKidId === -1) { alert("Select a kid first!"); return; }
+            if(selectedKidId === -1) { alert("Please select a kid first!"); return; }
             await fetch('/api/add_time', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({kid_id: selectedKidId, minutes: minutes, tag: currentTag})
             });
             loadData();
+        }
+
+        async function removeTag(e, tag) {
+            e.stopPropagation();
+            if(!confirm(\`Delete activity "\${tag}"?\`)) return;
+            await fetch('/api/remove_tag', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({tag: tag})
+            });
+            loadData();
+        }
+
+        async function addKid() { await fetch('/api/add_kid', {method: 'POST'}); loadData(); }
+        async function removeKid(id) { if(confirm('Delete kid?')) { await fetch(\`/api/remove_kid/\${id}\`, {method: 'POST'}); loadData(); } }
+        async function updateName(id, name) { await fetch(\`/api/update_name/\${id}\`, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({name}) }); }
+        async function addNewTag() { const t = prompt("Activity Name:"); if(t) { await fetch('/api/add_tag', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({tag: t}) }); loadData(); } }
+
+        function switchTab(t) {
+            document.getElementById('view-daily').style.display = t === 'daily' ? 'block' : 'none';
+            document.getElementById('view-weekly').style.display = t === 'weekly' ? 'block' : 'none';
+            document.getElementById('controls-panel').style.display = t === 'daily' ? 'block' : 'none';
+            document.getElementById('tab-daily').classList.toggle('active', t === 'daily');
+            document.getElementById('tab-weekly').classList.toggle('active', t === 'weekly');
         }
     </script>
 </body>
