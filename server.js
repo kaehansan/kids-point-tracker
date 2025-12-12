@@ -4,7 +4,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(bodyParser.json());
-// REMOVED: app.use(express.static('public')); <-- This caused the conflict!
+// No public folder link to prevent conflicts
 
 // --- DATABASE ---
 let kidsDb = [
@@ -12,7 +12,6 @@ let kidsDb = [
 ];
 let historyLog = []; 
 let customTags = ["Chores", "Homework", "Reading", "Clean Up"];
-// Default Presets (Editable)
 let presets = [5, 10, 15, 30]; 
 let weeklyMinutes = 0;
 
@@ -78,16 +77,20 @@ app.post('/api/add_time', (req, res) => {
     const { kid_id, minutes, tag } = req.body;
     const kid = kidsDb.find(k => k.id === kid_id);
     if (kid) {
+        // Update Balance
         kid.minutes += minutes;
         if (kid.minutes < 0) kid.minutes = 0;
         
-        if (minutes > 0) {
-            weeklyMinutes += minutes;
-            historyLog.unshift({
-                timestamp: Date.now(),
-                text: `${kid.name}: +${minutes}m (${tag})`
-            });
-        }
+        // Update Weekly Total (Tracks net change)
+        weeklyMinutes += minutes;
+
+        // Log History (FIXED: Now logs everything, even negative)
+        const sign = minutes > 0 ? "+" : ""; // Add plus sign for positive numbers
+        historyLog.unshift({
+            timestamp: Date.now(),
+            text: `${kid.name}: ${sign}${minutes}m (${tag})`
+        });
+        
         res.json({ success: true });
     } else {
         res.json({ success: false });
@@ -96,7 +99,6 @@ app.post('/api/add_time', (req, res) => {
 
 // --- FRONTEND ---
 app.get('/', (req, res) => {
-    // FORCE NO CACHE
     res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
     
     res.send(`
@@ -105,7 +107,7 @@ app.get('/', (req, res) => {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Minute Tracker v4.0</title>
+    <title>Minute Tracker v5.0</title>
     <style>
         :root { --bg-start: #667eea; --bg-end: #764ba2; --kid-red: #FF6B6B; --kid-teal: #4ECDC4; }
         body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: #F0F8FF; display: flex; flex-direction: column; height: 100vh; }
@@ -130,16 +132,15 @@ app.get('/', (req, res) => {
 
         .controls { background: white; padding: 20px; border-top-left-radius: 30px; border-top-right-radius: 30px; box-shadow: 0 -10px 40px rgba(0,0,0,0.1); position: fixed; bottom: 0; width: 100%; box-sizing: border-box; z-index: 100; max-height: 55vh; overflow-y: auto; }
         
-        /* Tags Styling */
+        /* Tags Styling - FIXED */
         .tags-wrapper { overflow-x: auto; white-space: nowrap; margin-bottom: 15px; padding-bottom: 5px; }
-        .tag-btn { position: relative; display: inline-flex; align-items: center; padding: 10px 18px; margin-right: 8px; border-radius: 12px; border: 2px solid #eee; cursor: pointer; font-weight: bold; font-size: 14px; background: white; color: #444; transition: all 0.2s; }
+        .tag-btn { position: relative; display: inline-flex; align-items: center; padding: 10px 18px; margin-right: 8px; border-radius: 12px; border: 2px solid #eee; cursor: pointer; font-weight: bold; font-size: 14px; background: white; color: #444; transition: all 0.2s; user-select: none; }
         .tag-btn.selected { background: #9B59B6; color: white; border-color: #9B59B6; box-shadow: 0 4px 10px rgba(155, 89, 182, 0.4); }
         .tag-btn.add { background: #f0f0f0; border: 1px dashed #aaa; }
         
-        /* Small X button on tags */
         .tag-delete { 
             margin-left: 8px; 
-            width: 20px; height: 20px; 
+            width: 22px; height: 22px; 
             background: rgba(0,0,0,0.1); 
             border-radius: 50%; 
             display: inline-flex; align-items: center; justify-content: center; 
@@ -148,7 +149,6 @@ app.get('/', (req, res) => {
         }
         .tag-delete:hover { background: #FF6B6B; color: white; }
 
-        /* Presets & Manual */
         .presets-header { font-size: 12px; color: #888; font-weight: bold; margin-bottom: 5px; text-transform: uppercase; }
         .presets-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 15px; }
         .preset-box { display: flex; flex-direction: column; }
@@ -179,7 +179,7 @@ app.get('/', (req, res) => {
 
     <div id="app-container" style="display:none; height: 100%; flex-direction: column;">
         <div class="header">
-            <h2 style="margin:0;">Minute Tracker v4.0</h2>
+            <h2 style="margin:0;">Minute Tracker v5.0</h2>
             <div style="font-size: 14px; opacity: 0.9; margin-top: 5px;">Today's Total: <span id="daily-val">0</span>m</div>
         </div>
 
@@ -195,7 +195,7 @@ app.get('/', (req, res) => {
 
         <div id="view-weekly" class="content-area" style="display:none;">
             <div style="background: white; padding: 20px; border-radius: 20px; margin-bottom: 20px; text-align: center;">
-                <div style="color: #888; font-size: 14px;">Total Earned</div>
+                <div style="color: #888; font-size: 14px;">Total Balance</div>
                 <div style="font-size: 48px; font-weight:900; color:#FDCB6E;"><span id="weekly-total-display">0</span>m</div>
             </div>
             <div id="history-log"></div>
@@ -257,17 +257,23 @@ app.get('/', (req, res) => {
                 const btn = document.createElement('div');
                 btn.className = \`tag-btn \${currentTag === tag ? 'selected' : ''}\`;
                 btn.innerHTML = \`\${tag} <span class="tag-delete" onclick="removeTag(event, '\${tag}')">✕</span>\`;
-                btn.onclick = (e) => { if(e.target.className === 'tag-delete') return; currentTag = tag; renderTags(tags); }; 
+                btn.onclick = (e) => { if(e.target.className === 'tag-delete') return; currentTag = tag; renderTags(tags); }; // Re-render to show selection purple
+                btn.ondblclick = () => renameTag(tag);
                 container.appendChild(btn);
             });
-            container.innerHTML += \`<button class="tag-btn add" onclick="addNewTag()">+ New</button>\`;
+            // FIXED: Use appendChild so we don't break existing button listeners
+            const addBtn = document.createElement('div');
+            addBtn.className = 'tag-btn add';
+            addBtn.innerText = '+ New';
+            addBtn.onclick = addNewTag;
+            container.appendChild(addBtn);
         }
 
         function renderPresets() {
             const container = document.getElementById('presets-container'); container.innerHTML = '';
             presets.forEach((val, idx) => {
                 const box = document.createElement('div'); box.className = 'preset-box';
-                box.innerHTML = \`<input type="number" class="preset-input" value="\${val}" onchange="updatePreset(\${idx}, this.value)"><button class="preset-btn" onclick="addTime(\${val})">Add</button>\`;
+                box.innerHTML = \`<input type="number" class="preset-input" value="\${val}" onchange="updatePreset(\${idx}, this.value)"><button class="preset-btn" onclick="addTime(\${val})">+ Add</button>\`;
                 container.appendChild(box);
             });
         }
@@ -304,6 +310,8 @@ app.get('/', (req, res) => {
             loadData();
         }
 
+        function adjustManual(amount) { const input = document.getElementById('manual-input'); let val = parseInt(input.value) || 0; val += amount; if(val < 1) val = 1; input.value = val; }
+        async function renameTag(e, oldTag) { e.stopPropagation(); const newTag = prompt("Rename activity:", oldTag); if(newTag && newTag !== oldTag) { await fetch('/api/rename_tag', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({oldTag, newTag}) }); loadData(); } }
         async function removeTag(e, tag) { e.stopPropagation(); if(!confirm(\`Delete activity "\${tag}"?\`)) return; await fetch('/api/remove_tag', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({tag}) }); loadData(); }
         async function addKid() { await fetch('/api/add_kid', {method: 'POST'}); loadData(); }
         async function removeKid(id) { if(confirm('Delete kid?')) { await fetch(\`/api/remove_kid/\${id}\`, {method: 'POST'}); loadData(); } }
