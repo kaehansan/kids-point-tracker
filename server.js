@@ -6,7 +6,7 @@ const PORT = process.env.PORT || 3000;
 app.use(bodyParser.json());
 app.use(express.static('public'));
 
-// --- DATABASE (Resets on restart) ---
+// --- DATABASE ---
 let kidsDb = [
     { id: 1, name: "Kid 1", minutes: 0, color: "#4ECDC4" }
 ];
@@ -14,7 +14,7 @@ let historyLog = [];
 let customTags = ["Chores", "Homework", "Reading", "Clean Up"];
 let weeklyMinutes = 0;
 
-// --- API ENDPOINTS ---
+// --- API ---
 app.get('/api/data', (req, res) => {
     res.json({ kids: kidsDb, tags: customTags, history: historyLog, weekly_total: weeklyMinutes });
 });
@@ -55,7 +55,6 @@ app.post('/api/add_time', (req, res) => {
         kid.minutes += minutes;
         if (kid.minutes < 0) kid.minutes = 0;
         
-        // Log History (Only for positive adds)
         if (minutes > 0) {
             weeklyMinutes += minutes;
             const now = new Date();
@@ -88,9 +87,8 @@ app.get('/', (req, res) => {
         
         /* App Structure */
         .header { background: linear-gradient(to right, var(--bg-start), var(--bg-end)); padding: 20px; color: white; text-align: center; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        .content-area { flex: 1; overflow-y: auto; padding: 20px; padding-bottom: 220px; } /* Space for controls */
+        .content-area { flex: 1; overflow-y: auto; padding: 20px; padding-bottom: 240px; } /* Space for controls */
         
-        /* Tabs */
         .tabs { display: flex; background: white; border-bottom: 1px solid #eee; }
         .tab { flex: 1; padding: 15px; text-align: center; color: #888; cursor: pointer; font-weight: bold; }
         .tab.active { color: var(--bg-start); border-bottom: 3px solid var(--bg-start); background: #F8F9FF; }
@@ -98,42 +96,36 @@ app.get('/', (req, res) => {
         /* Kid Cards */
         .kid-card { background: white; border-radius: 20px; padding: 15px; margin-bottom: 15px; display: flex; flex-direction: column; align-items: center; position: relative; box-shadow: 0 4px 15px rgba(0,0,0,0.05); border: 3px solid transparent; transition: all 0.2s; }
         .kid-card.selected { border-color: var(--bg-start); background-color: #F0F2FF; transform: scale(1.02); }
-        
-        .delete-btn { position: absolute; top: 10px; right: 10px; background: #FFEBEE; color: var(--kid-red); border: none; border-radius: 50%; width: 32px; height: 32px; cursor: pointer; font-weight: bold; font-size: 16px; display: flex; align-items: center; justify-content: center; }
+        .delete-btn { position: absolute; top: 10px; right: 10px; background: #FFEBEE; color: var(--kid-red); border: none; border-radius: 50%; width: 32px; height: 32px; cursor: pointer; font-weight: bold; font-size: 16px; }
         .kid-name-input { font-size: 24px; font-weight: 800; text-align: center; border: none; background: transparent; width: 80%; outline: none; margin-bottom: 5px; color: #333; }
         .kid-minutes { font-size: 40px; font-weight: 900; letter-spacing: -1px; }
 
         /* Controls Panel */
         .controls { background: white; padding: 20px; border-top-left-radius: 30px; border-top-right-radius: 30px; box-shadow: 0 -10px 40px rgba(0,0,0,0.1); position: fixed; bottom: 0; width: 100%; box-sizing: border-box; z-index: 100; }
         
-        /* Tags */
         .tags-wrapper { overflow-x: auto; white-space: nowrap; margin-bottom: 15px; padding-bottom: 5px; -webkit-overflow-scrolling: touch; }
         .tag-btn { position: relative; display: inline-flex; align-items: center; padding: 8px 16px; margin-right: 8px; border-radius: 20px; border: none; cursor: pointer; color: white; font-weight: bold; font-size: 14px; background: #9B59B6; padding-right: 32px; }
         .tag-btn.add { background: #eee; color: #555; padding-right: 16px; }
-        .tag-delete { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); width: 20px; height: 20px; background: rgba(0,0,0,0.2); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; line-height: 1; }
+        .tag-delete { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); width: 20px; height: 20px; background: rgba(0,0,0,0.2); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; line-height: 1; color: white; cursor: pointer; }
 
-        /* Manual Input Section */
-        .manual-section { display: flex; align-items: center; justify-content: space-between; margin-bottom: 15px; background: #F8F9FA; padding: 10px; border-radius: 15px; }
+        /* Manual Input & Presets */
+        .manual-section { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; background: #F8F9FA; padding: 10px; border-radius: 15px; }
         .stepper-btn { width: 45px; height: 45px; border-radius: 12px; border: none; background: var(--bg-start); color: white; font-size: 24px; font-weight: bold; cursor: pointer; }
         #manual-input { width: 80px; text-align: center; font-size: 24px; font-weight: bold; border: none; background: transparent; color: #333; }
 
-        /* 4 Editable Boxes */
         .presets-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 15px; }
         .preset-box { display: flex; flex-direction: column; gap: 5px; }
-        .preset-input { width: 100%; text-align: center; border: 1px solid #ddd; border-radius: 8px; padding: 5px; font-size: 14px; box-sizing: border-box; }
-        .preset-btn { width: 100%; padding: 10px 0; background: #E0E7FF; color: var(--bg-start); border: none; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 14px; }
+        .preset-input { width: 100%; text-align: center; border: 1px solid #ddd; border-radius: 8px; padding: 8px; font-size: 16px; font-weight: bold; box-sizing: border-box; }
+        .preset-btn { width: 100%; padding: 8px 0; background: #E0E7FF; color: var(--bg-start); border: none; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 12px; }
         .preset-btn:active { background: var(--bg-start); color: white; }
 
-        /* Big Action Buttons */
         .actions-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-        .action-btn { padding: 15px; border-radius: 15px; border: none; color: white; font-weight: bold; font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; }
-
-        /* History */
+        .action-btn { padding: 15px; border-radius: 15px; border: none; color: white; font-weight: bold; font-size: 16px; cursor: pointer; }
+        
         .history-item { background: white; padding: 15px; margin-bottom: 10px; border-radius: 12px; border-left: 5px solid var(--bg-start); font-size: 15px; color: #444; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
     </style>
 </head>
 <body>
-
     <div id="login-screen">
         <div class="login-box">
             <h2>🔐 Login</h2>
@@ -168,7 +160,7 @@ app.get('/', (req, res) => {
         </div>
 
         <div class="controls" id="controls-panel">
-            <div style="text-align: center; color: #888; font-weight: bold; margin-bottom: 15px; font-size: 14px;" id="selected-status">Tap a kid above to start</div>
+            <div style="text-align: center; color: #888; font-weight: bold; margin-bottom: 10px; font-size: 14px;" id="selected-status">Tap a kid above to start</div>
             
             <div class="tags-wrapper" id="tags-container"></div>
 
@@ -179,22 +171,10 @@ app.get('/', (req, res) => {
             </div>
 
             <div class="presets-grid">
-                <div class="preset-box">
-                    <input type="number" class="preset-input" id="p1-val" value="5">
-                    <button class="preset-btn" onclick="usePreset('p1-val')">Add</button>
-                </div>
-                <div class="preset-box">
-                    <input type="number" class="preset-input" id="p2-val" value="10">
-                    <button class="preset-btn" onclick="usePreset('p2-val')">Add</button>
-                </div>
-                <div class="preset-box">
-                    <input type="number" class="preset-input" id="p3-val" value="15">
-                    <button class="preset-btn" onclick="usePreset('p3-val')">Add</button>
-                </div>
-                <div class="preset-box">
-                    <input type="number" class="preset-input" id="p4-val" value="30">
-                    <button class="preset-btn" onclick="usePreset('p4-val')">Add</button>
-                </div>
+                <div class="preset-box"><input type="number" class="preset-input" id="p1" value="5"><button class="preset-btn" onclick="usePreset('p1')">Add</button></div>
+                <div class="preset-box"><input type="number" class="preset-input" id="p2" value="10"><button class="preset-btn" onclick="usePreset('p2')">Add</button></div>
+                <div class="preset-box"><input type="number" class="preset-input" id="p3" value="15"><button class="preset-btn" onclick="usePreset('p3')">Add</button></div>
+                <div class="preset-box"><input type="number" class="preset-input" id="p4" value="30"><button class="preset-btn" onclick="usePreset('p4')">Add</button></div>
             </div>
 
             <div class="actions-grid">
@@ -205,139 +185,61 @@ app.get('/', (req, res) => {
     </div>
 
     <script>
-        let kids = [];
-        let selectedKidId = -1;
-        let currentTag = "General";
+        let kids = []; let selectedKidId = -1; let currentTag = "General";
 
-        function login() {
-            if(document.getElementById('password').value) {
-                document.getElementById('login-screen').style.display = 'none';
-                document.getElementById('app-container').style.display = 'flex';
-                loadData();
-            }
-        }
-
-        async function loadData() {
-            const res = await fetch('/api/data');
-            const data = await res.json();
-            kids = data.kids;
-            document.getElementById('weekly-total-display').innerText = data.weekly_total;
-            renderKids();
-            renderTags(data.tags);
-            renderHistory(data.history);
-        }
-
+        function login() { if(document.getElementById('password').value) { document.getElementById('login-screen').style.display = 'none'; document.getElementById('app-container').style.display = 'flex'; loadData(); } }
+        async function loadData() { const res = await fetch('/api/data'); const data = await res.json(); kids = data.kids; document.getElementById('weekly-total-display').innerText = data.weekly_total; renderKids(); renderTags(data.tags); renderHistory(data.history); }
+        
         function renderKids() {
-            const container = document.getElementById('kids-container');
-            container.innerHTML = '';
-            let dailyTotal = 0;
+            const container = document.getElementById('kids-container'); container.innerHTML = ''; let dailyTotal = 0;
             kids.forEach(kid => {
                 dailyTotal += kid.minutes;
                 const card = document.createElement('div');
                 card.className = \`kid-card \${kid.id === selectedKidId ? 'selected' : ''}\`;
-                card.onclick = (e) => {
-                    if(['INPUT', 'BUTTON'].includes(e.target.tagName) || e.target.classList.contains('delete-btn')) return;
-                    selectedKidId = kid.id;
-                    document.getElementById('selected-status').innerText = \`Selected: \${kid.name}\`;
-                    document.getElementById('selected-status').style.color = kid.color;
-                    renderKids();
-                };
-                card.innerHTML = \`
-                    <button class="delete-btn" onclick="removeKid(\${kid.id})">✕</button>
-                    <input class="kid-name-input" value="\${kid.name}" onchange="updateName(\${kid.id}, this.value)">
-                    <div class="kid-minutes" style="color: \${kid.color}">\${kid.minutes} m</div>
-                \`;
+                card.onclick = (e) => { if(['INPUT', 'BUTTON'].includes(e.target.tagName) || e.target.classList.contains('delete-btn')) return; selectedKidId = kid.id; document.getElementById('selected-status').innerText = \`Selected: \${kid.name}\`; document.getElementById('selected-status').style.color = kid.color; renderKids(); };
+                card.innerHTML = \`<button class="delete-btn" onclick="removeKid(\${kid.id})">✕</button><input class="kid-name-input" value="\${kid.name}" onchange="updateName(\${kid.id}, this.value)"><div class="kid-minutes" style="color: \${kid.color}">\${kid.minutes} m</div>\`;
                 container.appendChild(card);
             });
             document.getElementById('daily-val').innerText = dailyTotal;
         }
 
         function renderTags(tags) {
-            const container = document.getElementById('tags-container');
-            container.innerHTML = '';
+            const container = document.getElementById('tags-container'); container.innerHTML = '';
             tags.forEach(tag => {
                 const btn = document.createElement('div');
                 btn.className = 'tag-btn';
                 btn.innerHTML = \`\${tag} <span class="tag-delete" onclick="removeTag(event, '\${tag}')">✕</span>\`;
-                btn.onclick = (e) => { 
-                    if(e.target.className === 'tag-delete') return;
-                    currentTag = tag; 
-                    alert(\`Activity set: \${tag}\`); 
-                };
+                btn.onclick = (e) => { if(e.target.className === 'tag-delete') return; currentTag = tag; alert(\`Activity set: \${tag}\`); };
                 container.appendChild(btn);
             });
             container.innerHTML += \`<button class="tag-btn add" onclick="addNewTag()">+ New</button>\`;
         }
 
         function renderHistory(history) {
-            const container = document.getElementById('history-log');
-            container.innerHTML = '';
-            history.forEach(entry => {
-                const div = document.createElement('div');
-                div.className = 'history-item';
-                div.innerText = entry;
-                container.appendChild(div);
-            });
+            const container = document.getElementById('history-log'); container.innerHTML = '';
+            history.forEach(entry => { const div = document.createElement('div'); div.className = 'history-item'; div.innerText = entry; container.appendChild(div); });
         }
 
-        // --- ACTIONS ---
-        function adjustManual(amount) {
-            const input = document.getElementById('manual-input');
-            let val = parseInt(input.value) || 0;
-            val += amount;
-            if(val < 1) val = 1;
-            input.value = val;
-        }
-
-        function usePreset(inputId) {
-            const val = parseInt(document.getElementById(inputId).value);
-            if(val) addTime(val);
-        }
-
-        async function applyManual(isAdd) {
-            const val = parseInt(document.getElementById('manual-input').value);
-            if(val) addTime(isAdd ? val : -val);
-        }
-
+        function adjustManual(amount) { const input = document.getElementById('manual-input'); let val = parseInt(input.value) || 0; val += amount; if(val < 1) val = 1; input.value = val; }
+        function usePreset(id) { const val = parseInt(document.getElementById(id).value); if(val) addTime(val); }
+        async function applyManual(isAdd) { const val = parseInt(document.getElementById('manual-input').value); if(val) addTime(isAdd ? val : -val); }
+        
         async function addTime(minutes) {
             if(selectedKidId === -1) { alert("Please select a kid first!"); return; }
-            await fetch('/api/add_time', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({kid_id: selectedKidId, minutes: minutes, tag: currentTag})
-            });
+            await fetch('/api/add_time', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({kid_id: selectedKidId, minutes: minutes, tag: currentTag}) });
             loadData();
         }
 
-        async function removeTag(e, tag) {
-            e.stopPropagation();
-            if(!confirm(\`Delete activity "\${tag}"?\`)) return;
-            await fetch('/api/remove_tag', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({tag: tag})
-            });
-            loadData();
-        }
-
+        async function removeTag(e, tag) { e.stopPropagation(); if(!confirm(\`Delete activity "\${tag}"?\`)) return; await fetch('/api/remove_tag', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({tag}) }); loadData(); }
         async function addKid() { await fetch('/api/add_kid', {method: 'POST'}); loadData(); }
         async function removeKid(id) { if(confirm('Delete kid?')) { await fetch(\`/api/remove_kid/\${id}\`, {method: 'POST'}); loadData(); } }
         async function updateName(id, name) { await fetch(\`/api/update_name/\${id}\`, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({name}) }); }
         async function addNewTag() { const t = prompt("Activity Name:"); if(t) { await fetch('/api/add_tag', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({tag: t}) }); loadData(); } }
-
-        function switchTab(t) {
-            document.getElementById('view-daily').style.display = t === 'daily' ? 'block' : 'none';
-            document.getElementById('view-weekly').style.display = t === 'weekly' ? 'block' : 'none';
-            document.getElementById('controls-panel').style.display = t === 'daily' ? 'block' : 'none';
-            document.getElementById('tab-daily').classList.toggle('active', t === 'daily');
-            document.getElementById('tab-weekly').classList.toggle('active', t === 'weekly');
-        }
+        function switchTab(t) { document.getElementById('view-daily').style.display = t === 'daily' ? 'block' : 'none'; document.getElementById('view-weekly').style.display = t === 'weekly' ? 'block' : 'none'; document.getElementById('controls-panel').style.display = t === 'daily' ? 'block' : 'none'; document.getElementById('tab-daily').classList.toggle('active', t === 'daily'); document.getElementById('tab-weekly').classList.toggle('active', t === 'weekly'); }
     </script>
 </body>
 </html>
     `);
 });
 
-app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-});
+app.listen(PORT, () => { console.log(`Server running on port ${PORT}`); });
