@@ -6,15 +6,14 @@ const PORT = process.env.PORT || 3000;
 app.use(bodyParser.json());
 app.use(express.static('public'));
 
-// --- DATABASE ---
+// --- DATABASE (Resets on restart) ---
 let kidsDb = [
     { id: 1, name: "Kid 1", minutes: 0, color: "#4ECDC4" }
 ];
-// History is now stored as objects: { dateString, timeString, text, kidId }
+// History now stores raw data, frontend handles formatting
 let historyLog = []; 
 let customTags = ["Chores", "Homework", "Reading", "Clean Up"];
-// Presets stored in DB to persist changes
-let presets = [5, 10, 15, 30]; 
+let presets = [5, 10, 15, 30]; // Default Editable Presets
 let weeklyMinutes = 0;
 
 // --- API ---
@@ -58,6 +57,7 @@ app.post('/api/remove_tag', (req, res) => {
     res.json({ success: true });
 });
 
+// NEW: Rename Tag
 app.post('/api/rename_tag', (req, res) => {
     const { oldTag, newTag } = req.body;
     const index = customTags.indexOf(oldTag);
@@ -67,10 +67,11 @@ app.post('/api/rename_tag', (req, res) => {
     res.json({ success: true });
 });
 
+// NEW: Update Preset Number
 app.post('/api/update_preset', (req, res) => {
     const { index, value } = req.body;
     if (index >= 0 && index < presets.length) {
-        presets[index] = parseInt(value);
+        presets[index] = parseInt(value) || 0;
     }
     res.json({ success: true });
 });
@@ -84,17 +85,10 @@ app.post('/api/add_time', (req, res) => {
         
         if (minutes > 0) {
             weeklyMinutes += minutes;
-            const now = new Date();
-            // Use simple date string for grouping (e.g., "Fri Dec 12 2025")
-            const dateKey = now.toDateString(); 
-            // 12-Hour format (e.g. "2:30 PM")
-            const timeString = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
-            
+            // Store raw timestamp for frontend to format
             historyLog.unshift({
-                dateKey: dateKey,
-                time: timeString,
-                text: `${kid.name}: +${minutes}m (${tag})`,
-                id: Date.now()
+                timestamp: Date.now(),
+                text: `${kid.name}: +${minutes}m (${tag})`
             });
         }
         res.json({ success: true });
@@ -121,7 +115,7 @@ app.get('/', (req, res) => {
         .login-input { padding: 12px; margin: 15px 0; border: 2px solid #eee; border-radius: 12px; width: 80%; font-size: 18px; text-align: center; }
         
         .header { background: linear-gradient(to right, var(--bg-start), var(--bg-end)); padding: 20px; color: white; text-align: center; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        .content-area { flex: 1; overflow-y: auto; padding: 20px; padding-bottom: 250px; }
+        .content-area { flex: 1; overflow-y: auto; padding: 20px; padding-bottom: 300px; }
         
         .tabs { display: flex; background: white; border-bottom: 1px solid #eee; }
         .tab { flex: 1; padding: 15px; text-align: center; color: #888; cursor: pointer; font-weight: bold; }
@@ -133,31 +127,34 @@ app.get('/', (req, res) => {
         .kid-name-input { font-size: 24px; font-weight: 800; text-align: center; border: none; background: transparent; width: 80%; outline: none; margin-bottom: 5px; color: #333; }
         .kid-minutes { font-size: 40px; font-weight: 900; letter-spacing: -1px; }
 
-        .controls { background: white; padding: 20px; border-top-left-radius: 30px; border-top-right-radius: 30px; box-shadow: 0 -10px 40px rgba(0,0,0,0.1); position: fixed; bottom: 0; width: 100%; box-sizing: border-box; z-index: 100; }
+        /* Controls Panel */
+        .controls { background: white; padding: 20px; border-top-left-radius: 30px; border-top-right-radius: 30px; box-shadow: 0 -10px 40px rgba(0,0,0,0.1); position: fixed; bottom: 0; width: 100%; box-sizing: border-box; z-index: 100; max-height: 50vh; overflow-y: auto; }
         
-        .tags-wrapper { overflow-x: auto; white-space: nowrap; margin-bottom: 15px; padding-bottom: 5px; -webkit-overflow-scrolling: touch; }
-        .tag-btn { position: relative; display: inline-flex; align-items: center; padding: 10px 18px; margin-right: 8px; border-radius: 12px; border: none; cursor: pointer; color: white; font-weight: bold; font-size: 14px; background: #9B59B6; padding-right: 36px; user-select: none; }
-        .tag-btn.add { background: #eee; color: #555; padding-right: 18px; }
-        .tag-delete { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); width: 22px; height: 22px; background: rgba(0,0,0,0.2); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; }
+        /* Tags */
+        .tags-wrapper { overflow-x: auto; white-space: nowrap; margin-bottom: 15px; padding-bottom: 5px; }
+        .tag-btn { position: relative; display: inline-flex; align-items: center; padding: 8px 12px; margin-right: 8px; border-radius: 12px; border: 1px solid #eee; cursor: pointer; font-weight: bold; font-size: 14px; background: white; color: #444; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+        .tag-btn.selected { background: #9B59B6; color: white; border-color: #9B59B6; }
+        .tag-btn.add { background: #f0f0f0; border: 1px dashed #aaa; }
+        .tag-icon { margin-left: 8px; font-size: 12px; opacity: 0.5; padding: 4px; }
+        .tag-icon:hover { opacity: 1; transform: scale(1.2); }
 
-        /* Presets & Manual */
-        .manual-section { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; background: #F8F9FA; padding: 10px; border-radius: 15px; }
-        .stepper-btn { width: 45px; height: 45px; border-radius: 12px; border: none; background: var(--bg-start); color: white; font-size: 24px; font-weight: bold; cursor: pointer; }
-        #manual-input { width: 80px; text-align: center; font-size: 24px; font-weight: bold; border: none; background: transparent; color: #333; }
-
+        /* Manual Input & Presets */
+        .presets-header { font-size: 12px; color: #888; font-weight: bold; margin-bottom: 5px; text-transform: uppercase; }
         .presets-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 15px; }
-        .preset-box { display: flex; flex-direction: column; gap: 5px; }
-        .preset-input { width: 100%; text-align: center; border: 1px solid #ddd; border-radius: 8px; padding: 8px; font-size: 16px; font-weight: bold; box-sizing: border-box; }
-        .preset-btn { width: 100%; padding: 8px 0; background: #E0E7FF; color: var(--bg-start); border: none; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 12px; }
-        .preset-btn:active { background: var(--bg-start); color: white; }
+        .preset-box { display: flex; flex-direction: column; }
+        .preset-input { width: 100%; text-align: center; border: 1px solid #ddd; border-top-left-radius: 10px; border-top-right-radius: 10px; padding: 8px 0; font-size: 16px; font-weight: bold; box-sizing: border-box; background: #FAFAFA; }
+        .preset-btn { width: 100%; padding: 10px 0; background: var(--bg-start); color: white; border: none; border-bottom-left-radius: 10px; border-bottom-right-radius: 10px; font-weight: bold; cursor: pointer; font-size: 14px; }
+        .preset-btn:active { opacity: 0.8; }
 
-        .actions-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-        .action-btn { padding: 15px; border-radius: 15px; border: none; color: white; font-weight: bold; font-size: 16px; cursor: pointer; }
+        .manual-section { display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 10px; background: #F8F9FA; padding: 10px; border-radius: 15px; }
+        .manual-input { width: 60px; padding: 8px; border-radius: 8px; border: 1px solid #ddd; text-align: center; font-size: 18px; font-weight: bold; }
         
-        /* New History Styles */
-        .date-header { font-weight: bold; color: #888; margin: 20px 0 10px 0; font-size: 14px; text-transform: uppercase; letter-spacing: 1px; }
-        .history-item { background: white; padding: 15px; margin-bottom: 10px; border-radius: 12px; border-left: 5px solid var(--bg-start); font-size: 15px; color: #444; box-shadow: 0 2px 5px rgba(0,0,0,0.05); display: flex; justify-content: space-between; }
-        .history-time { color: #aaa; font-size: 13px; font-weight: normal; }
+        .action-btn { width: 100%; padding: 15px; border-radius: 15px; border: none; color: white; font-weight: bold; font-size: 16px; cursor: pointer; margin-top: 5px; background: var(--kid-red); }
+        
+        /* History */
+        .date-header { font-weight: 800; color: #888; margin: 25px 0 10px 5px; font-size: 16px; }
+        .history-item { background: white; padding: 15px; margin-bottom: 10px; border-radius: 12px; border-left: 5px solid var(--bg-start); font-size: 15px; color: #444; box-shadow: 0 2px 5px rgba(0,0,0,0.05); display: flex; justify-content: space-between; align-items: center; }
+        .history-time { font-size: 12px; color: #aaa; background: #f5f5f5; padding: 4px 8px; border-radius: 10px; }
     </style>
 </head>
 <body>
@@ -165,7 +162,7 @@ app.get('/', (req, res) => {
         <div class="login-box">
             <h2>🔐 Login</h2>
             <input type="password" id="password" class="login-input" placeholder="Password">
-            <button class="action-btn" style="background: var(--kid-teal); width: 100%;" onclick="login()">Start Tracking</button>
+            <button class="action-btn" style="background: var(--kid-teal); width: 100%;" onclick="login()">Enter</button>
         </div>
     </div>
 
@@ -198,19 +195,17 @@ app.get('/', (req, res) => {
             
             <div class="tags-wrapper" id="tags-container"></div>
 
-            <div class="manual-section">
-                <button class="stepper-btn" onclick="adjustManual(-1)">-</button>
-                <input type="number" id="manual-input" value="5">
-                <button class="stepper-btn" onclick="adjustManual(1)">+</button>
-            </div>
-
+            <div class="presets-header">Quick Add (Edit numbers below)</div>
             <div class="presets-grid" id="presets-container">
                 </div>
 
-            <div class="actions-grid">
-                <button class="action-btn" style="background: var(--kid-red)" onclick="applyManual(false)">- Remove</button>
-                <button class="action-btn" style="background: var(--kid-teal)" onclick="applyManual(true)">+ Add Points</button>
+            <div class="manual-section">
+                <span>Custom:</span>
+                <input type="number" id="manual-input" class="manual-input" value="1">
+                <button onclick="applyManual(true)" style="padding:10px 20px; background:var(--kid-teal); border:none; border-radius:8px; color:white; font-weight:bold;">+ Add</button>
             </div>
+            
+            <button class="action-btn" onclick="applyManual(false)">- Remove Points</button>
         </div>
     </div>
 
@@ -237,7 +232,7 @@ app.get('/', (req, res) => {
                 dailyTotal += kid.minutes;
                 const card = document.createElement('div');
                 card.className = \`kid-card \${kid.id === selectedKidId ? 'selected' : ''}\`;
-                card.onclick = (e) => { if(['INPUT', 'BUTTON'].includes(e.target.tagName) || e.target.classList.contains('delete-btn')) return; selectedKidId = kid.id; document.getElementById('selected-status').innerText = \`Selected: \${kid.name}\`; document.getElementById('selected-status').style.color = kid.color; renderKids(); };
+                card.onclick = (e) => { if(['INPUT', 'BUTTON', 'SPAN'].includes(e.target.tagName) || e.target.classList.contains('delete-btn')) return; selectedKidId = kid.id; document.getElementById('selected-status').innerText = \`Selected: \${kid.name}\`; document.getElementById('selected-status').style.color = kid.color; renderKids(); };
                 card.innerHTML = \`<button class="delete-btn" onclick="removeKid(\${kid.id})">✕</button><input class="kid-name-input" value="\${kid.name}" onchange="updateName(\${kid.id}, this.value)"><div class="kid-minutes" style="color: \${kid.color}">\${kid.minutes} m</div>\`;
                 container.appendChild(card);
             });
@@ -248,10 +243,9 @@ app.get('/', (req, res) => {
             const container = document.getElementById('tags-container'); container.innerHTML = '';
             tags.forEach(tag => {
                 const btn = document.createElement('div');
-                btn.className = 'tag-btn';
-                btn.innerHTML = \`\${tag} <span class="tag-delete" onclick="removeTag(event, '\${tag}')">✕</span>\`;
-                btn.onclick = (e) => { if(e.target.className === 'tag-delete') return; currentTag = tag; alert(\`Activity set: \${tag}\`); };
-                btn.ondblclick = () => renameTag(tag); // Double click to rename
+                btn.className = \`tag-btn \${currentTag === tag ? 'selected' : ''}\`;
+                btn.innerHTML = \`\${tag} <span class="tag-icon" onclick="renameTag(event, '\${tag}')">✏️</span> <span class="tag-icon" onclick="removeTag(event, '\${tag}')">✕</span>\`;
+                btn.onclick = (e) => { if(e.target.className === 'tag-icon') return; currentTag = tag; renderTags(tags); };
                 container.appendChild(btn);
             });
             container.innerHTML += \`<button class="tag-btn add" onclick="addNewTag()">+ New</button>\`;
@@ -261,7 +255,7 @@ app.get('/', (req, res) => {
             const container = document.getElementById('presets-container'); container.innerHTML = '';
             presets.forEach((val, idx) => {
                 const box = document.createElement('div'); box.className = 'preset-box';
-                box.innerHTML = \`<input type="number" class="preset-input" value="\${val}" onchange="updatePreset(\${idx}, this.value)"><button class="preset-btn" onclick="addTime(\${val})">Add</button>\`;
+                box.innerHTML = \`<input type="number" class="preset-input" value="\${val}" onchange="updatePreset(\${idx}, this.value)"><button class="preset-btn" onclick="addTime(\${val})">+ Add</button>\`;
                 container.appendChild(box);
             });
         }
@@ -269,19 +263,30 @@ app.get('/', (req, res) => {
         function renderHistory(history) {
             const container = document.getElementById('history-log'); container.innerHTML = '';
             let lastDate = "";
+            const now = new Date();
+            const yesterday = new Date(now); yesterday.setDate(yesterday.getDate() - 1);
+
             history.forEach(entry => {
-                // Group by date
-                if(entry.dateKey !== lastDate) {
-                    const header = document.createElement('div'); header.className = 'date-header'; header.innerText = entry.dateKey;
-                    container.appendChild(header); lastDate = entry.dateKey;
+                const dateObj = new Date(entry.timestamp);
+                let dateStr = dateObj.toDateString();
+                
+                if (dateStr === now.toDateString()) dateStr = "Today";
+                else if (dateStr === yesterday.toDateString()) dateStr = "Yesterday";
+                else dateStr = dateObj.toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric'});
+
+                if(dateStr !== lastDate) {
+                    const header = document.createElement('div'); header.className = 'date-header'; header.innerText = dateStr;
+                    container.appendChild(header); lastDate = dateStr;
                 }
                 const div = document.createElement('div'); div.className = 'history-item';
-                div.innerHTML = \`<span>\${entry.text}</span> <span class="history-time">\${entry.time}</span>\`;
+                // Browser handles local time formatting
+                const timeStr = dateObj.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+                div.innerHTML = \`<span>\${entry.text}</span> <span class="history-time">\${timeStr}</span>\`;
                 container.appendChild(div);
             });
         }
 
-        function adjustManual(amount) { const input = document.getElementById('manual-input'); let val = parseInt(input.value) || 0; val += amount; if(val < 1) val = 1; input.value = val; }
+        async function updatePreset(idx, val) { await fetch('/api/update_preset', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({index: idx, value: val}) }); }
         async function applyManual(isAdd) { const val = parseInt(document.getElementById('manual-input').value); if(val) addTime(isAdd ? val : -val); }
         async function addTime(minutes) {
             if(selectedKidId === -1) { alert("Please select a kid first!"); return; }
@@ -289,8 +294,7 @@ app.get('/', (req, res) => {
             loadData();
         }
 
-        async function updatePreset(idx, val) { await fetch('/api/update_preset', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({index: idx, value: val}) }); }
-        async function renameTag(oldTag) { const newTag = prompt("Rename activity:", oldTag); if(newTag && newTag !== oldTag) { await fetch('/api/rename_tag', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({oldTag, newTag}) }); loadData(); } }
+        async function renameTag(e, oldTag) { e.stopPropagation(); const newTag = prompt("Rename activity:", oldTag); if(newTag && newTag !== oldTag) { await fetch('/api/rename_tag', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({oldTag, newTag}) }); loadData(); } }
         async function removeTag(e, tag) { e.stopPropagation(); if(!confirm(\`Delete activity "\${tag}"?\`)) return; await fetch('/api/remove_tag', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({tag}) }); loadData(); }
         async function addKid() { await fetch('/api/add_kid', {method: 'POST'}); loadData(); }
         async function removeKid(id) { if(confirm('Delete kid?')) { await fetch(\`/api/remove_kid/\${id}\`, {method: 'POST'}); loadData(); } }
@@ -303,4 +307,4 @@ app.get('/', (req, res) => {
     `);
 });
 
-app.listen(PORT, () => { console.log(`Server running on port ${PORT}`); });
+app.listen(PORT, () =>
