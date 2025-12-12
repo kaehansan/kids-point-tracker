@@ -57,15 +57,6 @@ app.post('/api/remove_tag', (req, res) => {
     res.json({ success: true });
 });
 
-app.post('/api/rename_tag', (req, res) => {
-    const { oldTag, newTag } = req.body;
-    const index = customTags.indexOf(oldTag);
-    if (index !== -1 && newTag) {
-        customTags[index] = newTag;
-    }
-    res.json({ success: true });
-});
-
 app.post('/api/update_preset', (req, res) => {
     const { index, value } = req.body;
     if (index >= 0 && index < presets.length) {
@@ -96,7 +87,7 @@ app.post('/api/add_time', (req, res) => {
 
 // --- FRONTEND ---
 app.get('/', (req, res) => {
-    // Force browser to download new version every time
+    // FORCE NO CACHE
     res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
     
     res.send(`
@@ -133,20 +124,21 @@ app.get('/', (req, res) => {
         /* Tags Styling */
         .tags-wrapper { overflow-x: auto; white-space: nowrap; margin-bottom: 15px; padding-bottom: 5px; }
         .tag-btn { position: relative; display: inline-flex; align-items: center; padding: 10px 18px; margin-right: 8px; border-radius: 12px; border: 2px solid #eee; cursor: pointer; font-weight: bold; font-size: 14px; background: white; color: #444; transition: all 0.2s; }
+        /* SELECTED STATE (Purple) */
         .tag-btn.selected { background: #9B59B6; color: white; border-color: #9B59B6; box-shadow: 0 4px 10px rgba(155, 89, 182, 0.4); }
         .tag-btn.add { background: #f0f0f0; border: 1px dashed #aaa; }
         
-        /* Small X button on tags */
+        /* DELETE BUTTON (Small X) */
         .tag-delete { 
             margin-left: 8px; 
-            width: 20px; height: 20px; 
+            width: 22px; height: 22px; 
             background: rgba(0,0,0,0.1); 
             border-radius: 50%; 
             display: inline-flex; align-items: center; justify-content: center; 
-            font-size: 10px; 
-            opacity: 0.6;
+            font-size: 10px; color: #555;
+            cursor: pointer;
         }
-        .tag-delete:hover { opacity: 1; background: red; color: white; }
+        .tag-delete:hover { background: #FF6B6B; color: white; }
 
         /* Presets & Manual */
         .presets-header { font-size: 12px; color: #888; font-weight: bold; margin-bottom: 5px; text-transform: uppercase; }
@@ -170,7 +162,7 @@ app.get('/', (req, res) => {
     <div id="login-screen">
         <div class="login-box">
             <h2>🔐 Login</h2>
-            <form onsubmit="event.preventDefault(); login();" style="display:flex; flex-direction:column; align-items:center;">
+            <form onsubmit="event.preventDefault(); login();" style="display:flex; flex-direction:column; align-items:center; width:100%;">
                 <input type="password" id="password" class="login-input" placeholder="Password" autocomplete="current-password">
                 <button type="submit" class="action-btn" style="background: var(--kid-teal); width: 100%;">Enter</button>
             </form>
@@ -256,12 +248,11 @@ app.get('/', (req, res) => {
             const container = document.getElementById('tags-container'); container.innerHTML = '';
             tags.forEach(tag => {
                 const btn = document.createElement('div');
-                // Added logic to turn button PURPLE when selected
+                // HIGHLIGHT LOGIC: If selected, add 'selected' class
                 btn.className = \`tag-btn \${currentTag === tag ? 'selected' : ''}\`;
-                // Added explicit 'X' button
+                // REMOVE BUTTON: Visible 'X'
                 btn.innerHTML = \`\${tag} <span class="tag-delete" onclick="removeTag(event, '\${tag}')">✕</span>\`;
-                btn.onclick = (e) => { if(e.target.className === 'tag-delete') return; currentTag = tag; renderTags(tags); }; // Re-render to update purple selection
-                btn.ondblclick = () => renameTag(tag);
+                btn.onclick = (e) => { if(e.target.className === 'tag-delete') return; currentTag = tag; renderTags(tags); }; // Re-render to show selection
                 container.appendChild(btn);
             });
             container.innerHTML += \`<button class="tag-btn add" onclick="addNewTag()">+ New</button>\`;
@@ -309,8 +300,6 @@ app.get('/', (req, res) => {
             loadData();
         }
 
-        function adjustManual(amount) { const input = document.getElementById('manual-input'); let val = parseInt(input.value) || 0; val += amount; if(val < 1) val = 1; input.value = val; }
-        async function renameTag(e, oldTag) { e.stopPropagation(); const newTag = prompt("Rename activity:", oldTag); if(newTag && newTag !== oldTag) { await fetch('/api/rename_tag', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({oldTag, newTag}) }); loadData(); } }
         async function removeTag(e, tag) { e.stopPropagation(); if(!confirm(\`Delete activity "\${tag}"?\`)) return; await fetch('/api/remove_tag', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({tag}) }); loadData(); }
         async function addKid() { await fetch('/api/add_kid', {method: 'POST'}); loadData(); }
         async function removeKid(id) { if(confirm('Delete kid?')) { await fetch(\`/api/remove_kid/\${id}\`, {method: 'POST'}); loadData(); } }
