@@ -4,7 +4,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(bodyParser.json());
-app.use(express.static('public'));
+// REMOVED: app.use(express.static('public')); <-- This caused the conflict!
 
 // --- DATABASE ---
 let kidsDb = [
@@ -57,6 +57,15 @@ app.post('/api/remove_tag', (req, res) => {
     res.json({ success: true });
 });
 
+app.post('/api/rename_tag', (req, res) => {
+    const { oldTag, newTag } = req.body;
+    const index = customTags.indexOf(oldTag);
+    if (index !== -1 && newTag) {
+        customTags[index] = newTag;
+    }
+    res.json({ success: true });
+});
+
 app.post('/api/update_preset', (req, res) => {
     const { index, value } = req.body;
     if (index >= 0 && index < presets.length) {
@@ -96,7 +105,7 @@ app.get('/', (req, res) => {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Minute Tracker v3.0</title>
+    <title>Minute Tracker v4.0</title>
     <style>
         :root { --bg-start: #667eea; --bg-end: #764ba2; --kid-red: #FF6B6B; --kid-teal: #4ECDC4; }
         body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: #F0F8FF; display: flex; flex-direction: column; height: 100vh; }
@@ -124,14 +133,13 @@ app.get('/', (req, res) => {
         /* Tags Styling */
         .tags-wrapper { overflow-x: auto; white-space: nowrap; margin-bottom: 15px; padding-bottom: 5px; }
         .tag-btn { position: relative; display: inline-flex; align-items: center; padding: 10px 18px; margin-right: 8px; border-radius: 12px; border: 2px solid #eee; cursor: pointer; font-weight: bold; font-size: 14px; background: white; color: #444; transition: all 0.2s; }
-        /* SELECTED STATE (Purple) */
         .tag-btn.selected { background: #9B59B6; color: white; border-color: #9B59B6; box-shadow: 0 4px 10px rgba(155, 89, 182, 0.4); }
         .tag-btn.add { background: #f0f0f0; border: 1px dashed #aaa; }
         
-        /* DELETE BUTTON (Small X) */
+        /* Small X button on tags */
         .tag-delete { 
             margin-left: 8px; 
-            width: 22px; height: 22px; 
+            width: 20px; height: 20px; 
             background: rgba(0,0,0,0.1); 
             border-radius: 50%; 
             display: inline-flex; align-items: center; justify-content: center; 
@@ -171,7 +179,7 @@ app.get('/', (req, res) => {
 
     <div id="app-container" style="display:none; height: 100%; flex-direction: column;">
         <div class="header">
-            <h2 style="margin:0;">Minute Tracker v3.0</h2>
+            <h2 style="margin:0;">Minute Tracker v4.0</h2>
             <div style="font-size: 14px; opacity: 0.9; margin-top: 5px;">Today's Total: <span id="daily-val">0</span>m</div>
         </div>
 
@@ -199,8 +207,7 @@ app.get('/', (req, res) => {
             <div class="tags-wrapper" id="tags-container"></div>
 
             <div class="presets-header">Quick Add (Edit numbers below)</div>
-            <div class="presets-grid" id="presets-container">
-                </div>
+            <div class="presets-grid" id="presets-container"></div>
 
             <div class="manual-section">
                 <span>Custom:</span>
@@ -248,11 +255,9 @@ app.get('/', (req, res) => {
             const container = document.getElementById('tags-container'); container.innerHTML = '';
             tags.forEach(tag => {
                 const btn = document.createElement('div');
-                // HIGHLIGHT LOGIC: If selected, add 'selected' class
                 btn.className = \`tag-btn \${currentTag === tag ? 'selected' : ''}\`;
-                // REMOVE BUTTON: Visible 'X'
                 btn.innerHTML = \`\${tag} <span class="tag-delete" onclick="removeTag(event, '\${tag}')">✕</span>\`;
-                btn.onclick = (e) => { if(e.target.className === 'tag-delete') return; currentTag = tag; renderTags(tags); }; // Re-render to show selection
+                btn.onclick = (e) => { if(e.target.className === 'tag-delete') return; currentTag = tag; renderTags(tags); }; 
                 container.appendChild(btn);
             });
             container.innerHTML += \`<button class="tag-btn add" onclick="addNewTag()">+ New</button>\`;
@@ -262,7 +267,6 @@ app.get('/', (req, res) => {
             const container = document.getElementById('presets-container'); container.innerHTML = '';
             presets.forEach((val, idx) => {
                 const box = document.createElement('div'); box.className = 'preset-box';
-                // Generates EDITABLE inputs
                 box.innerHTML = \`<input type="number" class="preset-input" value="\${val}" onchange="updatePreset(\${idx}, this.value)"><button class="preset-btn" onclick="addTime(\${val})">Add</button>\`;
                 container.appendChild(box);
             });
