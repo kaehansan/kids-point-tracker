@@ -6,14 +6,13 @@ const PORT = process.env.PORT || 3000;
 app.use(bodyParser.json());
 app.use(express.static('public'));
 
-// --- DATABASE (Resets on restart) ---
+// --- DATABASE ---
 let kidsDb = [
     { id: 1, name: "Kid 1", minutes: 0, color: "#4ECDC4" }
 ];
-// History now stores raw data, frontend handles formatting
-let historyLog = []; 
+let historyLog = []; // Stores objects: { timestamp, text }
 let customTags = ["Chores", "Homework", "Reading", "Clean Up"];
-let presets = [5, 10, 15, 30]; // Default Editable Presets
+let presets = [5, 10, 15, 30]; 
 let weeklyMinutes = 0;
 
 // --- API ---
@@ -57,7 +56,6 @@ app.post('/api/remove_tag', (req, res) => {
     res.json({ success: true });
 });
 
-// NEW: Rename Tag
 app.post('/api/rename_tag', (req, res) => {
     const { oldTag, newTag } = req.body;
     const index = customTags.indexOf(oldTag);
@@ -67,7 +65,6 @@ app.post('/api/rename_tag', (req, res) => {
     res.json({ success: true });
 });
 
-// NEW: Update Preset Number
 app.post('/api/update_preset', (req, res) => {
     const { index, value } = req.body;
     if (index >= 0 && index < presets.length) {
@@ -85,7 +82,7 @@ app.post('/api/add_time', (req, res) => {
         
         if (minutes > 0) {
             weeklyMinutes += minutes;
-            // Store raw timestamp for frontend to format
+            // We store the raw timestamp so the FRONTEND can format it nicely
             historyLog.unshift({
                 timestamp: Date.now(),
                 text: `${kid.name}: +${minutes}m (${tag})`
@@ -97,15 +94,18 @@ app.post('/api/add_time', (req, res) => {
     }
 });
 
-// --- FRONTEND ---
+// --- FRONTEND (With Cache-Busting Headers) ---
 app.get('/', (req, res) => {
+    // Prevent browser from caching the HTML to fix the "Object" error
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    
     res.send(`
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Minute Tracker</title>
+    <title>Minute Tracker v2.0</title>
     <style>
         :root { --bg-start: #667eea; --bg-end: #764ba2; --kid-red: #FF6B6B; --kid-teal: #4ECDC4; }
         body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: #F0F8FF; display: flex; flex-direction: column; height: 100vh; }
@@ -127,18 +127,15 @@ app.get('/', (req, res) => {
         .kid-name-input { font-size: 24px; font-weight: 800; text-align: center; border: none; background: transparent; width: 80%; outline: none; margin-bottom: 5px; color: #333; }
         .kid-minutes { font-size: 40px; font-weight: 900; letter-spacing: -1px; }
 
-        /* Controls Panel */
         .controls { background: white; padding: 20px; border-top-left-radius: 30px; border-top-right-radius: 30px; box-shadow: 0 -10px 40px rgba(0,0,0,0.1); position: fixed; bottom: 0; width: 100%; box-sizing: border-box; z-index: 100; max-height: 50vh; overflow-y: auto; }
         
-        /* Tags */
         .tags-wrapper { overflow-x: auto; white-space: nowrap; margin-bottom: 15px; padding-bottom: 5px; }
-        .tag-btn { position: relative; display: inline-flex; align-items: center; padding: 8px 12px; margin-right: 8px; border-radius: 12px; border: 1px solid #eee; cursor: pointer; font-weight: bold; font-size: 14px; background: white; color: #444; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+        .tag-btn { position: relative; display: inline-flex; align-items: center; padding: 10px 18px; margin-right: 8px; border-radius: 12px; border: 1px solid #eee; cursor: pointer; font-weight: bold; font-size: 14px; background: white; color: #444; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
         .tag-btn.selected { background: #9B59B6; color: white; border-color: #9B59B6; }
         .tag-btn.add { background: #f0f0f0; border: 1px dashed #aaa; }
         .tag-icon { margin-left: 8px; font-size: 12px; opacity: 0.5; padding: 4px; }
         .tag-icon:hover { opacity: 1; transform: scale(1.2); }
 
-        /* Manual Input & Presets */
         .presets-header { font-size: 12px; color: #888; font-weight: bold; margin-bottom: 5px; text-transform: uppercase; }
         .presets-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 15px; }
         .preset-box { display: flex; flex-direction: column; }
@@ -151,7 +148,6 @@ app.get('/', (req, res) => {
         
         .action-btn { width: 100%; padding: 15px; border-radius: 15px; border: none; color: white; font-weight: bold; font-size: 16px; cursor: pointer; margin-top: 5px; background: var(--kid-red); }
         
-        /* History */
         .date-header { font-weight: 800; color: #888; margin: 25px 0 10px 5px; font-size: 16px; }
         .history-item { background: white; padding: 15px; margin-bottom: 10px; border-radius: 12px; border-left: 5px solid var(--bg-start); font-size: 15px; color: #444; box-shadow: 0 2px 5px rgba(0,0,0,0.05); display: flex; justify-content: space-between; align-items: center; }
         .history-time { font-size: 12px; color: #aaa; background: #f5f5f5; padding: 4px 8px; border-radius: 10px; }
@@ -168,7 +164,7 @@ app.get('/', (req, res) => {
 
     <div id="app-container" style="display:none; height: 100%; flex-direction: column;">
         <div class="header">
-            <h2 style="margin:0;">Minute Tracker</h2>
+            <h2 style="margin:0;">Minute Tracker v2.0</h2>
             <div style="font-size: 14px; opacity: 0.9; margin-top: 5px;">Today's Total: <span id="daily-val">0</span>m</div>
         </div>
 
@@ -196,8 +192,7 @@ app.get('/', (req, res) => {
             <div class="tags-wrapper" id="tags-container"></div>
 
             <div class="presets-header">Quick Add (Edit numbers below)</div>
-            <div class="presets-grid" id="presets-container">
-                </div>
+            <div class="presets-grid" id="presets-container"></div>
 
             <div class="manual-section">
                 <span>Custom:</span>
@@ -279,7 +274,6 @@ app.get('/', (req, res) => {
                     container.appendChild(header); lastDate = dateStr;
                 }
                 const div = document.createElement('div'); div.className = 'history-item';
-                // Browser handles local time formatting
                 const timeStr = dateObj.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
                 div.innerHTML = \`<span>\${entry.text}</span> <span class="history-time">\${timeStr}</span>\`;
                 container.appendChild(div);
