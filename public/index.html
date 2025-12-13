@@ -205,6 +205,6 @@
         async function updateName(id, name) { await fetch(`/api/update_name/${id}`, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({name}) }); }
         async function addNewTag() { const t = prompt("Activity Name:"); if(t) { await fetch('/api/add_tag', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({tag: t}) }); loadData(); } }
         function switchTab(t) { document.getElementById('view-daily').style.display = t === 'daily' ? 'block' : 'none'; document.getElementById('view-weekly').style.display = t === 'weekly' ? 'block' : 'none'; document.getElementById('controls-panel').style.display = t === 'daily' ? 'block' : 'none'; document.getElementById('tab-daily').classList.toggle('active', t === 'daily'); document.getElementById('tab-weekly').classList.toggle('active', t === 'weekly'); }
-    </script>
+    </script> 
 </body>
-</html>
+</html>  
