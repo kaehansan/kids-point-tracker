@@ -210,4 +210,60 @@
                 const dateObj = new Date(entry.timestamp);
                 let dateStr = dateObj.toDateString();
                 if (dateStr === now.toDateString()) dateStr = "Today";
-                else if (dateStr === yesterday
+                else if (dateStr === yesterday.toDateString()) dateStr = "Yesterday";
+                else dateStr = dateObj.toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric'});
+
+                if(dateStr !== lastDate) {
+                    const header = document.createElement('div'); header.className = 'date-header'; header.innerText = dateStr;
+                    container.appendChild(header); lastDate = dateStr;
+                }
+                const div = document.createElement('div'); div.className = 'history-item';
+                const timeStr = dateObj.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+                div.innerHTML = `<span>${entry.text}</span> <span class="history-time">${timeStr}</span>`;
+                container.appendChild(div);
+            });
+            
+            if (filteredHistory.length === 0) {
+                container.innerHTML = '<div style="text-align:center; color:#ccc; margin-top:20px;">No history found</div>';
+            }
+        }
+
+        // --- Standard Functions (No changes) ---
+        function renderTags(tags) {
+            const container = document.getElementById('tags-container'); container.innerHTML = '';
+            tags.forEach(tag => {
+                const btn = document.createElement('div');
+                btn.className = `tag-btn ${currentTag === tag ? 'selected' : ''}`;
+                btn.innerHTML = `${tag} <span class="tag-delete" onclick="removeTag(event, '${tag}')">✕</span>`;
+                btn.onclick = (e) => { if(e.target.className === 'tag-delete') return; currentTag = tag; renderTags(tags); }; 
+                btn.ondblclick = () => renameTag(tag);
+                container.appendChild(btn);
+            });
+            const addBtn = document.createElement('div'); addBtn.className = 'tag-btn add'; addBtn.innerText = '+ New'; addBtn.onclick = addNewTag; container.appendChild(addBtn);
+        }
+        function renderPresets() {
+            const container = document.getElementById('presets-container'); container.innerHTML = '';
+            presets.forEach((val, idx) => {
+                const box = document.createElement('div'); box.className = 'preset-box';
+                box.innerHTML = `<input type="number" class="preset-input" value="${val}" onchange="updatePreset(${idx}, this.value)"><button class="preset-btn" onclick="addTime(${val})">+ Add</button>`;
+                container.appendChild(box);
+            });
+        }
+        async function updatePreset(idx, val) { await fetch('/api/update_preset', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({index: idx, value: val}) }); }
+        async function applyManual(isAdd) { const val = parseInt(document.getElementById('manual-input').value); if(val) addTime(isAdd ? val : -val); }
+        async function addTime(minutes) {
+            if(selectedKidId === -1) { alert("Please select a kid first!"); return; }
+            await fetch('/api/add_time', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({kid_id: selectedKidId, minutes: minutes, tag: currentTag}) });
+            loadData();
+        }
+        function adjustManual(amount) { const input = document.getElementById('manual-input'); let val = parseInt(input.value) || 0; val += amount; if(val < 1) val = 1; input.value = val; }
+        async function renameTag(e, oldTag) { e.stopPropagation(); const newTag = prompt("Rename activity:", oldTag); if(newTag && newTag !== oldTag) { await fetch('/api/rename_tag', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({oldTag, newTag}) }); loadData(); } }
+        async function removeTag(e, tag) { e.stopPropagation(); if(!confirm(`Delete activity "${tag}"?`)) return; await fetch('/api/remove_tag', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({tag}) }); loadData(); }
+        async function addKid() { await fetch('/api/add_kid', {method: 'POST'}); loadData(); }
+        async function removeKid(id) { if(confirm('Delete kid?')) { await fetch(`/api/remove_kid/${id}`, {method: 'POST'}); loadData(); } }
+        async function updateName(id, name) { await fetch(`/api/update_name/${id}`, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({name}) }); }
+        async function addNewTag() { const t = prompt("Activity Name:"); if(t) { await fetch('/api/add_tag', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({tag: t}) }); loadData(); } }
+        function switchTab(t) { document.getElementById('view-daily').style.display = t === 'daily' ? 'block' : 'none'; document.getElementById('view-weekly').style.display = t === 'weekly' ? 'block' : 'none'; document.getElementById('controls-panel').style.display = t === 'daily' ? 'block' : 'none'; document.getElementById('tab-daily').classList.toggle('active', t === 'daily'); document.getElementById('tab-weekly').classList.toggle('active', t === 'weekly'); updateTotals(); renderHistory(); }
+    </script>
+</body>
+</html>
